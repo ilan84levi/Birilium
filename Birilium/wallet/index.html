@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birilium Wallet</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo">
+                <h1>BIRILIUM</h1>
+                <p class="tagline">The Future of Currency</p>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-view="create">
+                    <span class="icon">🔑</span>
+                    Create Wallet
+                </button>
+                <button class="nav-btn" data-view="mine">
+                    <span class="icon">⛏️</span>
+                    Mine Coins
+                </button>
+                <button class="nav-btn" data-view="manage">
+                    <span class="icon">💼</span>
+                    Manage Wallet
+                </button>
+                <button class="nav-btn" data-view="transfer">
+                    <span class="icon">💸</span>
+                    Send & Receive
+                </button>
+                <button class="nav-btn" data-view="subscription">
+                    <span class="icon">⭐</span>
+                    Mining Subscription
+                </button>
+            </nav>
+
+            <div class="wallet-info">
+                <p class="balance-label">Current Balance</p>
+                <p class="balance-amount" id="sidebarBalance">0.00 BRL</p>
+                <button class="btn-secondary hidden" id="lockWalletBtn" style="margin-top: 10px; width: 100%;">🔒 Lock Wallet</button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Create Wallet View -->
+            <div class="view active" id="create-view">
+                <h2>Create Your Birilium Wallet</h2>
+                <p class="description">Generate a secure wallet to store your Birilium coins. Make sure to save your secret key in a safe place!</p>
+
+                <!-- Tabs for Create/Connect -->
+                <div class="wallet-tabs">
+                    <button class="tab-btn active" id="createTabBtn">Create New</button>
+                    <button class="tab-btn" id="connectTabBtn">Connect Existing</button>
+                </div>
+
+                <!-- Create New Wallet Tab -->
+                <div class="card" id="createTabContent">
+                    <button class="btn-primary" id="generateWalletBtn">Generate New Wallet</button>
+
+                    <div id="walletDetails" class="wallet-details hidden">
+                        <div class="info-box">
+                            <label>Wallet Address:</label>
+                            <div class="copy-field">
+                                <input type="text" id="walletAddress" readonly>
+                                <button class="btn-copy" onclick="copyToClipboard('walletAddress')">Copy</button>
+                            </div>
+                        </div>
+
+                        <div class="info-box warning">
+                            <label>Secret Key (SAVE THIS SECURELY!):</label>
+                            <div class="copy-field">
+                                <textarea id="secretKey" readonly rows="4"></textarea>
+                                <button class="btn-copy" onclick="copyToClipboard('secretKey')">Copy</button>
+                            </div>
+                            <p class="warning-text">⚠️ Never share your secret key with anyone! Store it securely offline. If you lose it, you will lose access to your coins forever!</p>
+                        </div>
+
+                        <div id="passwordSection" class="info-box hidden">
+                            <label>Protect Your Wallet with Password (Optional but Recommended):</label>
+                            <div class="form-group">
+                                <input type="password" id="walletPassword" placeholder="Enter password">
+                            </div>
+                            <div class="form-group">
+                                <input type="password" id="confirmPassword" placeholder="Confirm password">
+                            </div>
+                            <p class="warning-text">💡 Password adds an extra layer of security. You'll need it every time you open the wallet.</p>
+                        </div>
+
+                        <button class="btn-secondary" id="confirmSaveBtn">I Have Saved My Secret Key</button>
+                    </div>
+                </div>
+
+                <!-- Connect to Existing Wallet Tab -->
+                <div class="card hidden" id="connectTabContent">
+                    <h3>Connect to Existing Wallet</h3>
+                    <p class="description">Enter your wallet address and secret key to connect to an existing wallet.</p>
+
+                    <form id="connectWalletForm">
+                        <div class="form-group">
+                            <label>Wallet Address:</label>
+                            <input type="text" id="connectAddress" placeholder="Enter your wallet address" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Secret Key:</label>
+                            <textarea id="connectSecretKey" placeholder="Enter your secret key" rows="4" required></textarea>
+                        </div>
+                        <button type="submit" class="btn-primary">Connect to Wallet</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Mine Coins View -->
+            <div class="view" id="mine-view">
+                <h2>Mine Birilium Coins</h2>
+                <p class="description">Start mining Birilium to earn rewards. Mining helps secure the network and validate transactions.</p>
+
+                <div class="card">
+                    <div class="global-supply-banner">
+                        <div class="supply-info">
+                            <h3>🌍 Global Supply</h3>
+                            <p class="supply-stats">
+                                <span id="totalSupply">Loading...</span> BRL mined  •
+                                <span id="remainingSupply">Loading...</span> BRL remaining
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="mining-stats">
+                        <div class="stat-box">
+                            <h3>Mining Status</h3>
+                            <p id="miningStatus" class="status-inactive">Inactive</p>
+                        </div>
+                        <div class="stat-box">
+                            <h3>Hashrate</h3>
+                            <p id="hashrate">0 H/s</p>
+                        </div>
+                        <div class="stat-box">
+                            <h3>My Coins Mined</h3>
+                            <p id="coinsMined">0.00 BRL</p>
+                        </div>
+                    </div>
+
+                    <div class="mining-controls">
+                        <button class="btn-primary" id="startMiningBtn">Start Mining</button>
+                        <button class="btn-secondary hidden" id="stopMiningBtn">Stop Mining</button>
+                    </div>
+
+                    <div class="mining-log">
+                        <h3>Mining Log</h3>
+                        <div id="miningLogContent" class="log-content">
+                            <p class="log-entry">Ready to mine. Click "Start Mining" to begin...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manage Wallet View -->
+            <div class="view" id="manage-view">
+                <h2>Manage Your Wallet</h2>
+                <p class="description">View your wallet details, balance, and transaction history.</p>
+
+                <div class="card">
+                    <div class="balance-display">
+                        <h3>Total Balance</h3>
+                        <p class="large-balance" id="totalBalance">0.00 BRL</p>
+                        <p class="usd-equivalent">≈ $0.00 USD</p>
+                    </div>
+
+                    <div class="wallet-details-section">
+                        <div class="info-row">
+                            <span class="label">Wallet Address (Full):</span>
+                            <div class="copy-field" style="flex: 1;">
+                                <input type="text" id="manageWalletAddressFull" readonly style="font-size: 12px;">
+                                <button class="btn-copy" onclick="copyToClipboard('manageWalletAddressFull')">Copy</button>
+                            </div>
+                        </div>
+                        <div class="info-row secret-key-row">
+                            <span class="label">Secret Key:</span>
+                            <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
+                                <input type="password" id="manageSecretKey" readonly style="flex: 1; font-size: 12px; font-family: monospace; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                                <button class="btn-secondary" id="toggleSecretKeyBtn" style="white-space: nowrap;">👁️ Show</button>
+                                <button class="btn-copy" onclick="copyToClipboard('manageSecretKey')">Copy</button>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Total Received:</span>
+                            <span class="value" id="totalReceived">0.00 BRL</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Total Sent:</span>
+                            <span class="value" id="totalSent">0.00 BRL</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Number of Transactions:</span>
+                            <span class="value" id="txCount">0</span>
+                        </div>
+                    </div>
+
+                    <div class="wallet-actions" style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-secondary" id="exportBackupBtn">📥 Export Backup</button>
+                        <button class="btn-secondary" id="importBackupBtn">📤 Import Backup</button>
+                        <button class="btn-secondary" id="exportTransactionsBtn">📊 Export Transactions</button>
+                        <button class="btn-secondary" id="disconnectWalletBtn" style="background: #dc3545; color: white;">🔌 Disconnect Wallet</button>
+                    </div>
+
+                    <div class="transaction-history">
+                        <h3>Recent Transactions</h3>
+                        <div id="transactionList" class="transaction-list">
+                            <p class="no-transactions">No transactions yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Send & Receive View -->
+            <div class="view" id="transfer-view">
+                <h2>Send & Receive Birilium</h2>
+                <p class="description">Transfer Birilium coins to other wallets or receive coins from others.</p>
+
+                <div class="transfer-container">
+                    <div class="card half-width">
+                        <h3>Send Coins</h3>
+                        <form id="sendForm">
+                            <div class="form-group">
+                                <label>Recipient Address:</label>
+                                <input type="text" id="recipientAddress" placeholder="Enter wallet address" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Amount (BRL):</label>
+                                <input type="number" id="sendAmount" placeholder="0.00" step="0.01" min="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Note (optional):</label>
+                                <input type="text" id="sendNote" placeholder="Payment description">
+                            </div>
+                            <button type="submit" class="btn-primary">Send Coins</button>
+                        </form>
+                    </div>
+
+                    <div class="card half-width">
+                        <h3>Receive Coins</h3>
+                        <p class="receive-instruction">Share your wallet address to receive Birilium coins:</p>
+
+                        <div class="receive-address">
+                            <div class="qr-code" id="qrCode">
+                                <div class="qr-placeholder">QR Code</div>
+                            </div>
+                            <div class="copy-field">
+                                <input type="text" id="receiveAddress" readonly>
+                                <button class="btn-copy" onclick="copyToClipboard('receiveAddress')">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mining Subscription View -->
+            <div class="view" id="subscription-view">
+                <h2>Mining Subscription</h2>
+                <p class="description">Subscribe to enhanced mining power and increase your earning potential!</p>
+
+                <div class="card">
+                    <div class="subscription-plan">
+                        <div class="plan-header">
+                            <h3>Premium Mining Plan</h3>
+                            <p class="plan-price">$5.00 <span>/month</span></p>
+                        </div>
+
+                        <div class="plan-features">
+                            <h4>Benefits:</h4>
+                            <ul>
+                                <li>✓ Mine Unlimited Coins (Free users: 20 BRL limit)</li>
+                                <li>✓ Create Unlimited Wallets (Free users: 1 wallet only)</li>
+                            </ul>
+                        </div>
+
+                        <div class="payment-section">
+                            <h4>Subscribe with PayPal:</h4>
+                            <div id="paypal-button-container-P-57Y69741R9575314SNDUCLPY"></div>
+                        </div>
+
+                        <div class="subscription-status">
+                            <p id="subscriptionStatus">No active subscription</p>
+                            <p id="subscriptionRenewalDate" class="hidden" style="color: #6c757d; font-size: 14px; margin-top: 10px;"></p>
+                            <button class="btn-secondary hidden" id="cancelSubscriptionBtn" style="background: #dc3545; color: white; margin-top: 15px; width: 100%;">Cancel Subscription</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms of Use Overlay -->
+    <div id="termsOverlay" class="terms-overlay">
+        <div class="terms-dialog">
+            <div class="terms-header">
+                <div class="terms-logo">
+                    <span class="coin-icon">💎</span>
+                    <div class="terms-title">
+                        <h2>BIRILIUM</h2>
+                        <p class="terms-subtitle">Terms of Use Agreement</p>
+                    </div>
+                </div>
+            </div>
+            <div class="terms-content">
+                <h3>1. Nature of the Project</h3>
+                <p>Birilium (the "Token") is a community-driven cryptocurrency created for entertainment, experimentation, and educational purposes. The Token does not represent ownership, shares, or rights in any company, foundation, or entity. Birilium is not intended for investment or speculation.</p>
+
+                <h3>2. No Guarantees or Warranties</h3>
+                <p>The Birilium Token is provided "as is" and "as available", without any guarantees or warranties. The creators make no representations regarding:</p>
+                <ul>
+                    <li>The accuracy or reliability of any information</li>
+                    <li>The security, stability, or continued availability of the token</li>
+                    <li>The future value, market demand, or liquidity</li>
+                </ul>
+                <p><strong>Cryptocurrencies are highly volatile and risky - you may lose your entire investment.</strong></p>
+
+                <h3>3. Limitation of Liability</h3>
+                <p>The creators, developers, and contributors shall not be held liable for any damages, losses, or claims arising from:</p>
+                <ul>
+                    <li>Use or inability to use the Birilium Token</li>
+                    <li>Loss of data, funds, or digital assets</li>
+                    <li>Smart contract bugs, exploits, or third-party attacks</li>
+                    <li>Any decision made based on information related to Birilium</li>
+                </ul>
+                <p><strong>All interactions are performed at your own risk.</strong></p>
+
+                <h3>4. No Financial Advice</h3>
+                <p>Nothing in this project should be construed as financial, investment, or legal advice. The creators are not licensed financial advisors.</p>
+
+                <h3>5. Your Responsibilities</h3>
+                <ul>
+                    <li><strong>Backup Your Secret Key:</strong> You are solely responsible for keeping your private key/secret key safe. If you lose it, your funds are lost forever.</li>
+                    <li><strong>Security:</strong> Never share your secret key with anyone. Use strong passwords.</li>
+                    <li><strong>Compliance:</strong> Ensure your use complies with local laws and regulations.</li>
+                </ul>
+
+                <h3>6. Acknowledgment</h3>
+                <p>By using this wallet, you acknowledge that you:</p>
+                <ul>
+                    <li>Understand and accept the experimental nature of this project</li>
+                    <li>Have not relied on any promise of profit</li>
+                    <li>Fully assume all risks associated with cryptocurrency</li>
+                    <li>Have read and agree to these Terms of Use</li>
+                </ul>
+            </div>
+            <div class="terms-actions">
+                <label class="terms-checkbox">
+                    <input type="checkbox" id="agreeCheckbox">
+                    <span>I have read and agree to the Terms of Use</span>
+                </label>
+                <button class="btn-primary" id="acceptTermsBtn" disabled>Accept & Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unlock Wallet Overlay -->
+    <div id="unlockOverlay" class="unlock-overlay hidden">
+        <div class="unlock-dialog">
+            <div class="unlock-header">
+                <h2>🔒 Wallet Locked</h2>
+                <div class="wallet-indicator" id="lockedWalletAddress">
+                    <small style="color: #6c757d;">Wallet: Loading...</small>
+                </div>
+            </div>
+            <p>Enter your password to unlock the wallet</p>
+            <div class="form-group">
+                <input type="password" id="unlockPassword" placeholder="Enter password" style="width: 100%; padding: 10px;">
+            </div>
+            <button class="btn-primary" id="unlockWalletBtn" style="width: 100%; margin-bottom: 10px;">Unlock</button>
+
+            <div class="session-options" style="border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 15px;">
+                <p style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Want to start fresh?</p>
+                <button class="btn-secondary" id="newSessionBtn" style="width: 100%; background: #6c757d;">🔄 Start New Session (Clear All Data)</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer-wallet.js"></script>
+
+    <!-- PayPal Configuration -->
+    <script>
+    // ====================================
+    // PAYPAL CONFIGURATION
+    // ====================================
+    // PayPal credentials are loaded from backend API
+    // This prevents exposing sensitive credentials in frontend code
+    let PAYPAL_CLIENT_ID = '';
+    let PAYPAL_PLAN_ID = '';
+    let PAYPAL_SANDBOX_MODE = false;
+
+    // Fetch PayPal configuration from backend with retry
+    async function loadPayPalConfig(retries = 10, delay = 1000) {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await fetch('http://localhost:3001/api/paypal-config');
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.clientId) {
+                        PAYPAL_CLIENT_ID = config.clientId;
+                        PAYPAL_PLAN_ID = config.planId;
+                        PAYPAL_SANDBOX_MODE = config.sandboxMode;
+                        console.log('PayPal config loaded successfully');
+                        return true;
+                    }
+                }
+            } catch (error) {
+                if (i < retries - 1) {
+                    console.log(`PayPal config not available yet (attempt ${i + 1}/${retries}), retrying...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    console.error('Failed to load PayPal configuration after ' + retries + ' attempts:', error);
+                }
+            }
+        }
+        return false;
+    }
+    </script>
+
+    <!-- PayPal SDK - dynamically loads sandbox or live -->
+    <script>
+    // Load PayPal SDK with correct credentials
+    (async function() {
+        // Wait for config to load (with retries for node startup)
+        const configLoaded = await loadPayPalConfig();
+        if (!configLoaded) {
+            console.error('Failed to load PayPal configuration - button will not load');
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription&locale=en_US`;
+        script.setAttribute('data-sdk-integration-source', 'button-factory');
+        script.onload = function() {
+            initializePayPalButton();
+        };
+        document.head.appendChild(script);
+    })();
+
+    function initializePayPalButton() {
+        if (typeof paypal === 'undefined') return;
+
+        // Show sandbox mode indicator
+        if (PAYPAL_SANDBOX_MODE) {
+            const indicator = document.createElement('div');
+            indicator.style.cssText = 'background: #ffc107; color: #000; padding: 10px; text-align: center; font-weight: bold; border-radius: 8px; margin-bottom: 15px;';
+            indicator.textContent = '⚠️ SANDBOX MODE - Test payments only (no real money)';
+            const container = document.getElementById('paypal-button-container-P-57Y69741R9575314SNDUCLPY');
+            if (container && container.parentNode) {
+                container.parentNode.insertBefore(indicator, container);
+            }
+        }
+
+        paypal.Buttons({
+            style: {
+                shape: 'pill',
+                color: 'blue',
+                layout: 'vertical',
+                label: 'subscribe',
+                height: 45
+            },
+            createSubscription: function(data, actions) {
+                return actions.subscription.create({
+                    plan_id: PAYPAL_PLAN_ID
+                });
+            },
+            onApprove: async function(data, actions) {
+                console.log('PayPal subscription approved:', data.subscriptionID);
+
+                // Get wallet address from the global wallet object
+                if (!window.wallet || !window.wallet.walletAddress) {
+                    alert('Error: No wallet address found. Please create a wallet first.');
+                    return;
+                }
+
+                const walletAddress = window.wallet.walletAddress;
+
+                // Send subscription data to blockchain node with retry logic
+                try {
+                    const response = await window.wallet.fetchWithRetry('http://localhost:3001/api/subscription/activate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            walletAddress: walletAddress,
+                            subscriptionId: data.subscriptionID,
+                            planId: PAYPAL_PLAN_ID,
+                            amount: 5.00,
+                            currency: 'USD',
+                            timestamp: Date.now()
+                        })
+                    }, 5); // 5 retries for critical subscription activation
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        // Update wallet subscription status
+                        window.wallet.hasSubscription = true;
+                        window.wallet.subscriptionId = data.subscriptionID;
+                        window.wallet.subscriptionStartDate = Date.now();
+                        window.wallet.saveWallet();
+                        window.wallet.updateUI();
+
+                        // Show success message
+                        alert('🎉 Premium subscription activated successfully!\\n\\nYou can now:\\n✓ Mine unlimited coins\\n✓ Create unlimited wallets');
+
+                        // Update subscription status display
+                        const subscriptionStatus = document.getElementById('subscriptionStatus');
+                        if (subscriptionStatus) {
+                            subscriptionStatus.textContent = '✓ Active Premium Subscription';
+                            subscriptionStatus.style.color = '#28a745';
+                        }
+                    } else {
+                        alert('Subscription payment successful, but failed to activate in system.\\nError: ' + result.error + '\\n\\nPlease contact support with your subscription ID: ' + data.subscriptionID);
+                    }
+                } catch (error) {
+                    console.error('Error activating subscription:', error);
+                    alert('Subscription payment successful, but failed to connect to blockchain node.\\n\\nYour subscription ID: ' + data.subscriptionID + '\\n\\nPlease save this ID and contact support.');
+                }
+            },
+            onError: function(err) {
+                console.error('PayPal error:', err);
+                alert('PayPal payment failed. Please try again or contact support.');
+            }
+        }).render('#paypal-button-container-P-57Y69741R9575314SNDUCLPY');
+    }
+    </script>
+</body>
+</html>

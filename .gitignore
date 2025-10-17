@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+Birilium/wallet/node_modules/
+Birilium/wallet/node-backend/node_modules/
+
+# Build outputs
+dist/
+Birilium/wallet/dist/
+build/
+*.exe
+*.dmg
+*.deb
+*.AppImage
+*.app
+*.rpm
+
+# Environment variables and secrets
+.env
+Birilium/wallet/node-backend/.env
+*.pem
+*.key
+certs/
+Birilium/wallet/node-backend/certs/
+
+# Database files
+Birilium/wallet/node-backend/data/
+Birilium/wallet/node-backend/logs/
+*.log
+logs/
+
+# Wallet data (user-specific)
+wallet-*.json
+wallets/
+*.wallet
+birilium-wallet-backup-*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.backup
+*.bak
+*.old
+
+# Test files
+test-results/
+coverage/
