@@ -1,0 +1,52 @@
+# Environment variables (contains sensitive credentials)
+node-backend/.env
+
+# Node modules
+node_modules/
+node-backend/node_modules/
+
+# Logs
+logs/
+*.log
+node-backend/logs/
+
+# Database files
+data/
+node-backend/data/
+
+# TLS Certificates (may contain private keys)
+certs/
+node-backend/certs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs
+dist/
+build/
+*.exe
+*.app
+*.dmg
+*.deb
+*.rpm
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Wallet backups (contains private keys!)
+birilium-wallet-backup-*.json
+
+# Test files
+test-results/
+coverage/

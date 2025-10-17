@@ -1,0 +1,62 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                  PAYPAL SANDBOX - QUICK START GUIDE                      ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+📌 CURRENT STATUS: SANDBOX MODE ENABLED (Line 380 in index.html)
+
+🎯 WHAT YOU NEED TO DO:
+
+1. GET SANDBOX CREDENTIALS
+   └─ Go to: https://developer.paypal.com/dashboard
+   └─ Login with your PayPal account
+   └─ Click "Apps & Credentials" → "Sandbox" tab
+   └─ Copy your "Client ID" (starts with AZ...)
+   └─ Create a subscription plan in sandbox business account
+   └─ Copy the "Plan ID" (starts with P-...)
+
+2. UPDATE WALLET CONFIGURATION
+   └─ Open: D:\birilium2claude\Birilium\wallet\index.html
+   └─ Find lines 383-384
+   └─ Replace:
+      const PAYPAL_SANDBOX_CLIENT_ID = 'YOUR_SANDBOX_CLIENT_ID_HERE';
+      const PAYPAL_SANDBOX_PLAN_ID = 'YOUR_SANDBOX_PLAN_ID_HERE';
+   └─ With your actual credentials (keep the quotes!)
+
+3. TEST THE SUBSCRIPTION
+   └─ Start wallet: npm start
+   └─ Look for yellow banner: "⚠️ SANDBOX MODE - Test payments only"
+   └─ Create a wallet
+   └─ Go to "Mining Subscription" tab
+   └─ Click PayPal button
+   └─ Log in with SANDBOX personal account (not your real PayPal!)
+   └─ Complete fake payment
+   └─ Verify unlimited mining works!
+
+═══════════════════════════════════════════════════════════════════════════
+
+📚 FULL GUIDE: Read PAYPAL_SANDBOX_TESTING_GUIDE.md for detailed steps
+
+🔗 USEFUL LINKS:
+   • PayPal Developer Dashboard: https://developer.paypal.com/
+   • Sandbox Test Accounts: https://developer.paypal.com/dashboard/accounts
+   • Sandbox PayPal Login: https://www.sandbox.paypal.com/
+
+⚠️  IMPORTANT NOTES:
+   • Sandbox uses FAKE money - no real charges!
+   • You need a sandbox PERSONAL account to test buying
+   • You need a sandbox BUSINESS account to receive payments
+   • PayPal auto-creates these accounts for you!
+   • The PayPal popup will show www.sandbox.paypal.com (NOT www.paypal.com)
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚀 WHEN READY FOR PRODUCTION:
+
+1. Create LIVE app at: https://developer.paypal.com/dashboard/applications/live
+2. Create LIVE subscription plan at: https://www.paypal.com/billing/plans
+3. Update index.html line 380: const PAYPAL_SANDBOX_MODE = false;
+4. Update lines 387-388 with your LIVE credentials
+5. Test with real $5 payment
+6. You're live! 🎉
+
+═══════════════════════════════════════════════════════════════════════════

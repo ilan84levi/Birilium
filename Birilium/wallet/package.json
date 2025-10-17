@@ -1,0 +1,110 @@
+{
+  "name": "birilium-wallet",
+  "version": "1.0.6",
+  "description": "Birilium Cryptocurrency Desktop Wallet",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
+  },
+  "keywords": [
+    "cryptocurrency",
+    "wallet",
+    "birilium",
+    "blockchain"
+  ],
+  "author": "Birilium Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.birilium.wallet",
+    "productName": "Birilium Wallet",
+    "copyright": "Copyright © 2025 Birilium Team",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!**/*.ts",
+      "!*.map",
+      "!**/*.md",
+      "!dist",
+      "!BUILD-README.md",
+      "!DISTRIBUTION-GUIDE.md",
+      "!**/data/**",
+      "!**/logs/**",
+      "!**/wallet-*.json",
+      "!**/*.log",
+      "!node-backend/data/**",
+      "!node-backend/logs/**"
+    ],
+    "extraResources": [
+      {
+        "from": "node-backend",
+        "to": "app/node-backend",
+        "filter": ["**/*", "!data/**", "!logs/**", "!**/*.log"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "publisherName": "Birilium Team"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Birilium Wallet",
+      "deleteAppDataOnUninstall": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.finance",
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Finance",
+      "icon": "build/icon.png"
+    }
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "argon2": "^0.44.0",
+    "bip32": "^5.0.0",
+    "bip39": "^3.1.0",
+    "crypto-js": "^4.2.0",
+    "elliptic": "^6.6.1",
+    "qrcode": "^1.5.4",
+    "tiny-secp256k1": "^2.2.4"
+  }
+}
