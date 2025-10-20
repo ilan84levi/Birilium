@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+wallet/node_modules/
+wallet/node-backend/node_modules/
+
+# Build outputs
+dist/
+wallet/dist/
+build/
+*.exe
+*.dmg
+*.deb
+*.AppImage
+
+# Environment variables and secrets
+.env
+wallet/node-backend/.env
+*.pem
+*.key
+certs/
+
+# Database files
+wallet/node-backend/data/
+wallet/node-backend/logs/
+*.log
+
+# Wallet data (user-specific)
+wallet-*.json
+wallets/
+*.wallet
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Claude Code settings (user-specific)
+../.claude/
+
+# SSH keys and sensitive files
+ssh_key
+ssh_key.pub
+nul
