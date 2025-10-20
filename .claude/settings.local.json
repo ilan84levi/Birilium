@@ -53,7 +53,9 @@
       "Bash(cmd /c \"echo %USERPROFILE%\\.ssh\")",
       "Read(//c/Users/ilan8/.ssh/**)",
       "Bash(cat:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(echo:*)",
+      "Bash(npm audit:*)"
     ],
     "deny": [],
     "ask": []
