@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -201,14 +201,42 @@ function createWindow() {
     width: 1400,
     height: 900,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      // SECURITY: Harden Electron window
+      nodeIntegration: false,           // Disable Node.js in renderer
+      contextIsolation: true,            // Enable context isolation
+      sandbox: true,                     // Enable sandbox
+      enableRemoteModule: false,         // Disable legacy remote module
+      preload: path.join(__dirname, 'preload.js'),  // Secure bridge
+      webSecurity: true,                 // Enable web security
+      allowRunningInsecureContent: false // Block insecure content
     },
     title: 'Birilium Wallet - Integrated Mining Node',
     icon: path.join(__dirname, 'icon.png') // Icon is in birilium-wallet folder
   });
 
   mainWindow.loadFile('index.html');
+
+  // SECURITY: Prevent navigation to external sites
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Only allow navigation to local files
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+      console.warn('Blocked navigation to:', url);
+    }
+  });
+
+  // SECURITY: Block new window creation
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Block all window.open() calls
+    console.warn('Blocked window.open() to:', url);
+    return { action: 'deny' };
+  });
+
+  // SECURITY: Handle external links safely
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    event.preventDefault();
+    console.warn('Blocked redirect to:', url);
+  });
 
   // Open DevTools ONLY in development mode (not in production)
   // Users can still open with F12/CTRL+I if needed

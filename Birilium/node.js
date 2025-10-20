@@ -33,8 +33,6 @@ const HTTP_PORT = process.env.HTTP_PORT || 3001;
 const P2P_PORT = process.env.P2P_PORT || 6001;
 const API_KEY = process.env.API_KEY || null; // Optional API key
 const ENABLE_P2P_TLS = process.env.ENABLE_P2P_TLS === 'true';
-const P2P_TLS_REQUIRE_CLIENT_CERT = process.env.P2P_TLS_REQUIRE_CLIENT_CERT === 'true';
-const P2P_TLS_CA_CERT = process.env.P2P_TLS_CA_CERT || path.join(__dirname, 'certs', 'ca-cert.pem');
 const MAX_PEERS = parseInt(process.env.MAX_PEERS) || 32;
 
 // Rate limiting
@@ -224,8 +222,8 @@ app.post('/api/wallet/create', (req, res) => {
     }
 });
 
-// Submit a SIGNED transaction (SECURE - no private key transmission, PUBLIC)
-app.post('/api/transaction/signed', (req, res) => {
+// Submit a SIGNED transaction (SECURE - no private key transmission)
+app.post('/api/transaction/signed', authenticateAPIKey, (req, res) => {
     try {
         const { fromAddress, toAddress, amount, fee, timestamp, signature } = req.body;
 
@@ -279,8 +277,8 @@ app.post('/api/transaction/signed', (req, res) => {
     }
 });
 
-// OLD ENDPOINT (DEPRECATED - kept for backward compatibility, will be removed, PUBLIC)
-app.post('/api/transaction', (req, res) => {
+// OLD ENDPOINT (DEPRECATED - kept for backward compatibility, will be removed)
+app.post('/api/transaction', authenticateAPIKey, (req, res) => {
     console.warn('DEPRECATED: /api/transaction endpoint used. Use /api/transaction/signed instead.');
     try {
         const { fromAddress, toAddress, amount, privateKey } = req.body;
@@ -339,8 +337,8 @@ app.post('/api/transaction', (req, res) => {
     }
 });
 
-// Mine a block (PUBLIC - no API key required for decentralization)
-app.post('/api/mine', miningLimiter, async (req, res) => {
+// Mine a block
+app.post('/api/mine', authenticateAPIKey, miningLimiter, async (req, res) => {
     try {
         const { minerAddress } = req.body;
 
@@ -449,163 +447,6 @@ app.get('/metrics', (req, res) => {
 
     res.set('Content-Type', 'text/plain');
     res.send(metrics.toPrometheusFormat());
-});
-
-// ========== ADMIN INTERFACE ==========
-
-// Admin dashboard - accessible via CTRL+ALT+A in wallet
-app.get('/api/admin', (req, res) => {
-    // Simple HTML admin dashboard
-    const adminDashboard = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Birilium Admin Panel</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-            .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-            h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-            .section { margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 4px solid #007bff; }
-            .stat { display: inline-block; margin-right: 30px; }
-            .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
-            .stat-label { color: #666; }
-            button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background: #0056b3; }
-            input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background: #f5f5f5; font-weight: bold; }
-            .error { color: #d32f2f; }
-            .success { color: #388e3c; }
-        </style>
-        <script>
-            async function loadStats() {
-                try {
-                    const health = await fetch('http://localhost:3001/health').then(r => r.json());
-                    const stats = await fetch('http://localhost:3001/api/stats').then(r => r.json());
-
-                    document.getElementById('blocks').textContent = health.blockchain.blocks;
-                    document.getElementById('difficulty').textContent = health.blockchain.difficulty;
-                    document.getElementById('pending').textContent = health.blockchain.pendingTransactions;
-                    document.getElementById('peers').textContent = health.peers;
-                    document.getElementById('memoryUsed').textContent = health.memory.used;
-                    document.getElementById('uptime').textContent = health.uptimeFormatted;
-
-                    document.getElementById('supply').textContent = (stats.currentSupply / 1e8).toFixed(2) + ' BRL';
-                    document.getElementById('miningReward').textContent = stats.miningReward + ' BRL';
-                } catch (e) {
-                    document.getElementById('error').textContent = 'Error loading stats: ' + e.message;
-                }
-            }
-
-            async function getPeers() {
-                try {
-                    const peers = await fetch('http://localhost:3001/api/peers').then(r => r.json());
-                    let html = '<table><tr><th>Node ID</th><th>Version</th><th>Connected</th></tr>';
-                    peers.forEach(p => {
-                        html += '<tr><td>' + p.nodeId + '</td><td>' + p.version + '</td><td>' + p.connectedAt + '</td></tr>';
-                    });
-                    html += '</table>';
-                    document.getElementById('peersList').innerHTML = html;
-                } catch (e) {
-                    document.getElementById('peersList').innerHTML = '<span class="error">Error: ' + e.message + '</span>';
-                }
-            }
-
-            function goBack() {
-                window.close();
-            }
-
-            window.onload = function() {
-                loadStats();
-                getPeers();
-                setInterval(loadStats, 5000);
-            };
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Birilium Admin Panel</h1>
-            <span id="error" class="error"></span>
-
-            <div class="section">
-                <h2>Blockchain Status</h2>
-                <div class="stat">
-                    <div class="stat-value" id="blocks">--</div>
-                    <div class="stat-label">Total Blocks</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="difficulty">--</div>
-                    <div class="stat-label">Difficulty</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="pending">--</div>
-                    <div class="stat-label">Pending TX</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="peers">--</div>
-                    <div class="stat-label">Connected Peers</div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Network Stats</h2>
-                <div class="stat">
-                    <div class="stat-value" id="supply">--</div>
-                    <div class="stat-label">Current Supply</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="miningReward">--</div>
-                    <div class="stat-label">Mining Reward</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="memoryUsed">--</div>
-                    <div class="stat-label">Memory Used</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="uptime">--</div>
-                    <div class="stat-label">Uptime</div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Connected Peers</h2>
-                <div id="peersList">Loading...</div>
-            </div>
-
-            <div class="section">
-                <button onclick="goBack()">Close Admin Panel</button>
-            </div>
-        </div>
-    </body>
-    </html>
-    `;
-    res.send(adminDashboard);
-});
-
-// ========== PAYPAL CONFIGURATION ENDPOINT ==========
-
-// Get PayPal configuration (called by frontend when loading)
-app.get('/api/paypal-config', (req, res) => {
-    try {
-        const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
-        const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-
-        // Return PayPal config to frontend
-        res.json({
-            success: true,
-            mode: PAYPAL_MODE,
-            clientId: PAYPAL_CLIENT_ID || null,
-            configured: !!PAYPAL_CLIENT_ID,
-            message: !PAYPAL_CLIENT_ID ? 'PayPal not configured - set PAYPAL_CLIENT_ID in .env' : 'PayPal ready'
-        });
-    } catch (error) {
-        console.error('PayPal config error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
 });
 
 // ========== ADMIN & SUBSCRIPTION ENDPOINTS ==========
@@ -717,7 +558,6 @@ app.post('/api/subscription/cancel', async (req, res) => {
         // PayPal API credentials from environment variables
         const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || 'AQWyciyninNqul8a60qGjkbez7hCmJ9GHXd7FMKZuXYn6AK_O2KbnFnqogFcWZaRWE4wwFREnlm7EaYe';
         const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
-        const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox'; // 'sandbox' or 'live'
 
         if (!PAYPAL_CLIENT_SECRET) {
             return res.status(500).json({
@@ -726,17 +566,10 @@ app.post('/api/subscription/cancel', async (req, res) => {
             });
         }
 
-        // Determine API base URL based on mode
-        const PAYPAL_API_BASE = PAYPAL_MODE === 'live'
-            ? 'https://api-m.paypal.com'
-            : 'https://api-m.sandbox.paypal.com';
-
-        console.log(`[PayPal] Using ${PAYPAL_MODE} mode: ${PAYPAL_API_BASE}`);
-
         // Step 1: Get PayPal access token
         const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
         const tokenResponse = await axios.post(
-            `${PAYPAL_API_BASE}/v1/oauth2/token`,
+            'https://api-m.paypal.com/v1/oauth2/token',
             'grant_type=client_credentials',
             {
                 headers: {
@@ -750,7 +583,7 @@ app.post('/api/subscription/cancel', async (req, res) => {
 
         // Step 2: Cancel the subscription via PayPal API
         const cancelResponse = await axios.post(
-            `${PAYPAL_API_BASE}/v1/billing/subscriptions/${subscriptionId}/cancel`,
+            `https://api-m.paypal.com/v1/billing/subscriptions/${subscriptionId}/cancel`,
             {
                 reason: 'User requested cancellation via wallet'
             },
@@ -956,57 +789,31 @@ const initP2PServer = () => {
         // Check if certificates exist
         if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
             console.log('[P2P] TLS certificates not found, generating self-signed certificates...');
-            const { generateSelfSignedNodeCertificate, saveCertificates } = require('./generate-certs');
-            const { cert, key } = generateSelfSignedNodeCertificate();
+            const { generateNodeCertificate, saveCertificates } = require('./generate-certs');
+            const { cert, key } = generateNodeCertificate();
             saveCertificates(cert, key, path.join(__dirname, 'certs'));
         }
 
-        // Prepare TLS options
-        const tlsOptions = {
+        // Create HTTPS server for WSS
+        const httpsServer = https.createServer({
             cert: fs.readFileSync(certPath),
             key: fs.readFileSync(keyPath)
-        };
-
-        // Enable mTLS if configured
-        if (P2P_TLS_REQUIRE_CLIENT_CERT) {
-            if (!fs.existsSync(P2P_TLS_CA_CERT)) {
-                console.warn(`[P2P] mTLS required but CA certificate not found at ${P2P_TLS_CA_CERT}`);
-                console.warn('[P2P] Falling back to server-only TLS (no client cert verification)');
-            } else {
-                tlsOptions.ca = fs.readFileSync(P2P_TLS_CA_CERT);
-                tlsOptions.requestCert = true;        // Request client certificate
-                tlsOptions.rejectUnauthorized = true; // Reject if not signed by our CA
-                console.log('[P2P] Mutual TLS (mTLS) enabled - client certificate verification required');
-            }
-        }
-
-        // Create HTTPS server for WSS
-        const httpsServer = https.createServer(tlsOptions);
+        });
 
         httpsServer.listen(P2P_PORT, () => {
-            const mode = P2P_TLS_REQUIRE_CLIENT_CERT && fs.existsSync(P2P_TLS_CA_CERT) ? 'mTLS' : 'TLS';
-            console.log(`[P2P] Secure WebSocket server (WSS with ${mode}) listening on port: ${P2P_PORT}`);
+            console.log(`[P2P] Secure WebSocket server (WSS) listening on port: ${P2P_PORT}`);
         });
 
         server = new WebSocket.Server({ server: httpsServer });
     } else {
         // Plain WebSocket (not recommended for production)
         server = new WebSocket.Server({ port: P2P_PORT });
-        console.log(`[P2P] WebSocket server (WS - UNENCRYPTED) listening on port: ${P2P_PORT}`);
-        console.warn('[P2P] ⚠️  WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.');
+        console.log(`[P2P] WebSocket server (WS) listening on port: ${P2P_PORT}`);
+        console.warn('[P2P] WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.');
     }
 
     server.on('connection', (ws, req) => {
         const remoteAddress = req.socket.remoteAddress;
-
-        // Log certificate info if mTLS is enabled
-        if (ENABLE_P2P_TLS && req.socket.getPeerCertificate) {
-            const peerCert = req.socket.getPeerCertificate();
-            if (peerCert && peerCert.subject) {
-                console.log(`[P2P] Connection from ${remoteAddress} (CN: ${peerCert.subject.CN})`);
-            }
-        }
-
         console.log(`[P2P] Incoming connection from ${remoteAddress}`);
         initConnection(ws, remoteAddress);
     });
@@ -1129,41 +936,12 @@ const initErrorHandler = (ws, onClose) => {
 };
 
 const connectToPeer = (newPeer) => {
-    const wsOptions = {};
-
-    // Configure TLS/mTLS for outgoing connections
-    if (ENABLE_P2P_TLS) {
-        wsOptions.rejectUnauthorized = false; // Accept self-signed by default
-
-        // Enable mTLS if CA certificate is available
-        if (P2P_TLS_REQUIRE_CLIENT_CERT && fs.existsSync(P2P_TLS_CA_CERT)) {
-            const certPath = process.env.TLS_CERT_PATH || path.join(__dirname, 'certs', 'node-cert.pem');
-            const keyPath = process.env.TLS_KEY_PATH || path.join(__dirname, 'certs', 'node-key.pem');
-
-            if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-                // Use client certificate for authentication to peer
-                wsOptions.cert = fs.readFileSync(certPath);
-                wsOptions.key = fs.readFileSync(keyPath);
-                wsOptions.ca = fs.readFileSync(P2P_TLS_CA_CERT);
-                wsOptions.rejectUnauthorized = true; // Verify peer certificate
-                console.log(`[P2P] Connecting to ${newPeer} with mTLS client certificate`);
-            }
-        }
-    }
-
-    const ws = new WebSocket(newPeer, wsOptions);
+    const ws = new WebSocket(newPeer, {
+        rejectUnauthorized: !ENABLE_P2P_TLS // Accept self-signed certs for now
+    });
 
     ws.on('open', () => {
-        if (ENABLE_P2P_TLS && ws._socket && ws._socket.getPeerCertificate) {
-            const peerCert = ws._socket.getPeerCertificate();
-            if (peerCert && peerCert.subject) {
-                console.log(`[P2P] Connected to peer: ${newPeer} (CN: ${peerCert.subject.CN})`);
-            } else {
-                console.log(`[P2P] Connected to peer: ${newPeer}`);
-            }
-        } else {
-            console.log(`[P2P] Connected to peer: ${newPeer}`);
-        }
+        console.log(`[P2P] Connected to peer: ${newPeer}`);
         initConnection(ws, newPeer);
     });
 
