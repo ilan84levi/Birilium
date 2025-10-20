@@ -583,94 +583,6 @@ app.get('/api/admin', (req, res) => {
     res.send(adminDashboard);
 });
 
-// ========== CONTACT FORM ENDPOINT ==========
-
-// Contact form submission
-app.post('/api/contact', async (req, res) => {
-    try {
-        const { name, phone, email, message } = req.body;
-
-        // Validate required fields
-        if (!name || !email || !message) {
-            return res.status(400).json({
-                success: false,
-                error: 'Name, email, and message are required'
-            });
-        }
-
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid email format'
-            });
-        }
-
-        // Setup nodemailer with Gmail
-        const nodemailer = require('nodemailer');
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
-                pass: process.env.CONTACT_EMAIL_PASSWORD
-            }
-        });
-
-        // Email content
-        const mailOptions = {
-            from: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
-            to: 'biriliumcoin@gmail.com',
-            subject: `Birilium Wallet Contact Form - ${name}`,
-            html: `
-                <h2>New Contact Form Submission</h2>
-                <p><strong>Name:</strong> ${name}</p>
-                <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
-                <p><strong>Email:</strong> ${email}</p>
-                <p><strong>Message:</strong></p>
-                <p>${message.replace(/\n/g, '<br>')}</p>
-                <hr>
-                <p><small>Sent from Birilium Wallet Contact Form</small></p>
-            `,
-            replyTo: email
-        };
-
-        // Check if email password is configured
-        if (!process.env.CONTACT_EMAIL_PASSWORD) {
-            console.warn('[Contact] Email password not configured in .env');
-            // Log to console for development purposes
-            console.log('=== CONTACT FORM SUBMISSION ===');
-            console.log('Name:', name);
-            console.log('Phone:', phone || 'Not provided');
-            console.log('Email:', email);
-            console.log('Message:', message);
-            console.log('==============================');
-
-            return res.json({
-                success: true,
-                message: 'Contact form received (email not configured, logged to console)',
-                dev_mode: true
-            });
-        }
-
-        // Send email
-        await transporter.sendMail(mailOptions);
-
-        logger.info({ name, email }, 'Contact form submitted');
-
-        res.json({
-            success: true,
-            message: 'Your message has been sent successfully!'
-        });
-    } catch (error) {
-        console.error('Contact form error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to send message. Please try again later.'
-        });
-    }
-});
-
 // ========== PAYPAL CONFIGURATION ENDPOINT ==========
 
 // Get PayPal configuration (called by frontend when loading)
@@ -678,15 +590,12 @@ app.get('/api/paypal-config', (req, res) => {
     try {
         const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
         const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-        const PAYPAL_PLAN_ID = 'P-57Y69741R9575314SNDUCLPY'; // Premium Mining Plan
 
         // Return PayPal config to frontend
         res.json({
             success: true,
             mode: PAYPAL_MODE,
             clientId: PAYPAL_CLIENT_ID || null,
-            planId: PAYPAL_PLAN_ID,
-            sandboxMode: PAYPAL_MODE === 'sandbox',
             configured: !!PAYPAL_CLIENT_ID,
             message: !PAYPAL_CLIENT_ID ? 'PayPal not configured - set PAYPAL_CLIENT_ID in .env' : 'PayPal ready'
         });
@@ -1038,99 +947,69 @@ app.post('/api/analytics/wallet-created', async (req, res) => {
 
 const initP2PServer = () => {
     let server;
-    let actualP2PPort = P2P_PORT;
 
-    const attachConnectionHandler = (wsServer) => {
-        wsServer.on('connection', (ws, req) => {
-            const remoteAddress = req.socket.remoteAddress;
+    if (ENABLE_P2P_TLS) {
+        // Load or generate TLS certificates
+        const certPath = process.env.TLS_CERT_PATH || path.join(__dirname, 'certs', 'node-cert.pem');
+        const keyPath = process.env.TLS_KEY_PATH || path.join(__dirname, 'certs', 'node-key.pem');
 
-            // Log certificate info if mTLS is enabled
-            if (ENABLE_P2P_TLS && req.socket.getPeerCertificate) {
-                const peerCert = req.socket.getPeerCertificate();
-                if (peerCert && peerCert.subject) {
-                    console.log(`[P2P] Connection from ${remoteAddress} (CN: ${peerCert.subject.CN})`);
-                }
-            }
-
-            console.log(`[P2P] Incoming connection from ${remoteAddress}`);
-            initConnection(ws, remoteAddress);
-        });
-    };
-
-    const startP2PServer = (port) => {
-        if (ENABLE_P2P_TLS) {
-            // Load or generate TLS certificates
-            const certPath = process.env.TLS_CERT_PATH || path.join(__dirname, 'certs', 'node-cert.pem');
-            const keyPath = process.env.TLS_KEY_PATH || path.join(__dirname, 'certs', 'node-key.pem');
-
-            // Check if certificates exist
-            if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-                console.log('[P2P] TLS certificates not found, generating self-signed certificates...');
-                const { generateSelfSignedNodeCertificate, saveCertificates } = require('./generate-certs');
-                const { cert, key } = generateSelfSignedNodeCertificate();
-                saveCertificates(cert, key, path.join(__dirname, 'certs'));
-            }
-
-            // Prepare TLS options
-            const tlsOptions = {
-                cert: fs.readFileSync(certPath),
-                key: fs.readFileSync(keyPath)
-            };
-
-            // Enable mTLS if configured
-            if (P2P_TLS_REQUIRE_CLIENT_CERT) {
-                if (!fs.existsSync(P2P_TLS_CA_CERT)) {
-                    console.warn(`[P2P] mTLS required but CA certificate not found at ${P2P_TLS_CA_CERT}`);
-                    console.warn('[P2P] Falling back to server-only TLS (no client cert verification)');
-                } else {
-                    tlsOptions.ca = fs.readFileSync(P2P_TLS_CA_CERT);
-                    tlsOptions.requestCert = true;        // Request client certificate
-                    tlsOptions.rejectUnauthorized = true; // Reject if not signed by our CA
-                    console.log('[P2P] Mutual TLS (mTLS) enabled - client certificate verification required');
-                }
-            }
-
-            // Create HTTPS server for WSS
-            const httpsServer = https.createServer(tlsOptions);
-
-            httpsServer.listen(port, () => {
-                actualP2PPort = port;
-                const mode = P2P_TLS_REQUIRE_CLIENT_CERT && fs.existsSync(P2P_TLS_CA_CERT) ? 'mTLS' : 'TLS';
-                console.log(`[P2P] Secure WebSocket server (WSS with ${mode}) listening on port: ${port}`);
-            }).on('error', (err) => {
-                if (err.code === 'EADDRINUSE') {
-                    console.warn(`[P2P] Port ${port} in use, trying alternate port...`);
-                    startP2PServer(port + 1);
-                    return;
-                }
-            });
-
-            server = new WebSocket.Server({ server: httpsServer });
-            attachConnectionHandler(server);
-        } else {
-            // Plain WebSocket (not recommended for production)
-            const wsServer = new WebSocket.Server({ port: port });
-
-            wsServer.on('listening', () => {
-                actualP2PPort = port;
-                console.log(`[P2P] WebSocket server (WS - UNENCRYPTED) listening on port: ${port}`);
-                console.warn('[P2P] ⚠️  WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.');
-            });
-
-            wsServer.on('error', (err) => {
-                if (err.code === 'EADDRINUSE') {
-                    console.warn(`[P2P] Port ${port} in use, trying alternate port...`);
-                    startP2PServer(port + 1);
-                    return;
-                }
-            });
-
-            server = wsServer;
-            attachConnectionHandler(server);
+        // Check if certificates exist
+        if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+            console.log('[P2P] TLS certificates not found, generating self-signed certificates...');
+            const { generateSelfSignedNodeCertificate, saveCertificates } = require('./generate-certs');
+            const { cert, key } = generateSelfSignedNodeCertificate();
+            saveCertificates(cert, key, path.join(__dirname, 'certs'));
         }
-    };
 
-    startP2PServer(P2P_PORT);
+        // Prepare TLS options
+        const tlsOptions = {
+            cert: fs.readFileSync(certPath),
+            key: fs.readFileSync(keyPath)
+        };
+
+        // Enable mTLS if configured
+        if (P2P_TLS_REQUIRE_CLIENT_CERT) {
+            if (!fs.existsSync(P2P_TLS_CA_CERT)) {
+                console.warn(`[P2P] mTLS required but CA certificate not found at ${P2P_TLS_CA_CERT}`);
+                console.warn('[P2P] Falling back to server-only TLS (no client cert verification)');
+            } else {
+                tlsOptions.ca = fs.readFileSync(P2P_TLS_CA_CERT);
+                tlsOptions.requestCert = true;        // Request client certificate
+                tlsOptions.rejectUnauthorized = true; // Reject if not signed by our CA
+                console.log('[P2P] Mutual TLS (mTLS) enabled - client certificate verification required');
+            }
+        }
+
+        // Create HTTPS server for WSS
+        const httpsServer = https.createServer(tlsOptions);
+
+        httpsServer.listen(P2P_PORT, () => {
+            const mode = P2P_TLS_REQUIRE_CLIENT_CERT && fs.existsSync(P2P_TLS_CA_CERT) ? 'mTLS' : 'TLS';
+            console.log(`[P2P] Secure WebSocket server (WSS with ${mode}) listening on port: ${P2P_PORT}`);
+        });
+
+        server = new WebSocket.Server({ server: httpsServer });
+    } else {
+        // Plain WebSocket (not recommended for production)
+        server = new WebSocket.Server({ port: P2P_PORT });
+        console.log(`[P2P] WebSocket server (WS - UNENCRYPTED) listening on port: ${P2P_PORT}`);
+        console.warn('[P2P] ⚠️  WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.');
+    }
+
+    server.on('connection', (ws, req) => {
+        const remoteAddress = req.socket.remoteAddress;
+
+        // Log certificate info if mTLS is enabled
+        if (ENABLE_P2P_TLS && req.socket.getPeerCertificate) {
+            const peerCert = req.socket.getPeerCertificate();
+            if (peerCert && peerCert.subject) {
+                console.log(`[P2P] Connection from ${remoteAddress} (CN: ${peerCert.subject.CN})`);
+            }
+        }
+
+        console.log(`[P2P] Incoming connection from ${remoteAddress}`);
+        initConnection(ws, remoteAddress);
+    });
 };
 
 const initConnection = (ws, remoteAddress) => {
@@ -1405,7 +1284,7 @@ const broadcast = (message) => {
 
 // ========== Start Server ==========
 
-const server = app.listen(HTTP_PORT, () => {
+app.listen(HTTP_PORT, () => {
     logger.startup({
         httpPort: HTTP_PORT,
         p2pPort: P2P_PORT,
@@ -1424,18 +1303,6 @@ const server = app.listen(HTTP_PORT, () => {
     console.log(`P2P Port: ${P2P_PORT}`);
     console.log(`Metrics: http://localhost:${HTTP_PORT}/metrics`);
     console.log('=================================');
-}).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`[ERROR] Port ${HTTP_PORT} already in use!`);
-        console.error('[INFO] Trying alternate port...');
-        const altPort = HTTP_PORT + 1;
-        app.listen(altPort, () => {
-            console.log(`[INFO] Server started on alternate port: ${altPort}`);
-            console.log(`HTTP API: http://localhost:${altPort}`);
-        });
-    } else {
-        throw err;
-    }
 });
 
 initP2PServer();

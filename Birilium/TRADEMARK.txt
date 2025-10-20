@@ -1,0 +1,13 @@
+Birilium™ is a registered trademark of Ilan Levi.
+Unauthorized commercial use of the name or logo is prohibited.
+
+Birilium™ is a trademark of Ilan Levi.
+
+The Birilium name, logo, and related marks may not be used in connection
+with any product or service that is not owned or authorized by Ilan Levi,
+or in any manner that is likely to cause confusion among users.
+
+Use of the Birilium trademark in open-source projects is permitted only
+to reference compatibility or integration, provided it is not misleading.
+
+© 2025 Ilan Levi. All rights reserved.
