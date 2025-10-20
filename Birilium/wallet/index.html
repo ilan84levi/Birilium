@@ -15,6 +15,9 @@
                 <p class="tagline">The Future of Currency</p>
             </div>
 
+            <!-- Contact Button -->
+            <button class="btn-contact" id="contactBtn">Contact Me</button>
+
             <nav class="nav-menu">
                 <button class="nav-btn active" data-view="create">
                     <span class="icon">🔑</span>
@@ -377,6 +380,38 @@
             <div class="session-options" style="border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 15px;">
                 <p style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Want to start fresh?</p>
                 <button class="btn-secondary" id="newSessionBtn" style="width: 100%; background: #6c757d;">🔄 Start New Session (Clear All Data)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contactModal" class="modal hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Contact Us</h2>
+                <button class="modal-close" id="closeContactModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="contactForm">
+                    <div class="form-group">
+                        <label>Full Name:</label>
+                        <input type="text" id="contactName" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number:</label>
+                        <input type="tel" id="contactPhone" placeholder="Enter your phone number" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="contactEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Message:</label>
+                        <textarea id="contactMessage" placeholder="Enter your message" rows="5" required></textarea>
+                    </div>
+                    <button type="submit" class="btn-primary" style="width: 100%;">Send Message</button>
+                </form>
+                <div id="contactStatus" class="contact-status hidden"></div>
             </div>
         </div>
     </div>

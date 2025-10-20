@@ -1,0 +1,53 @@
+Legal Notice & Terms of Use – Birilium Token
+1. Nature of the Project
+
+Birilium (the "Token") is a community-driven meme cryptocurrency created purely for entertainment, experimentation, and educational purposes.
+The Token does not represent ownership, shares, or rights in any company, foundation, or entity.
+Birilium is not intended for investment or speculation, and should not be purchased with the expectation of financial return.
+
+2. No Guarantees or Warranties
+
+The Birilium Token is provided “as is” and “as available”, without any guarantees or warranties of any kind, whether express or implied.
+The creators, developers, and contributors make no representations or warranties regarding:
+
+The accuracy or reliability of any information about the project;
+
+The security, stability, or continued availability of the token or its smart contract;
+
+The future value, market demand, or liquidity of the token.
+
+All users and holders of Birilium acknowledge that cryptocurrencies are highly volatile and risky assets, and that they may lose their entire value.
+
+3. Limitation of Liability
+
+Under no circumstances shall the creators, developers, or contributors be held liable for any damages, losses, or claims — whether direct, indirect, incidental, or consequential — arising out of or related to:
+
+The use or inability to use the Birilium Token;
+
+Loss of data, funds, or digital assets;
+
+Smart contract bugs, exploits, or third-party attacks;
+
+Any decision made based on information related to Birilium.
+
+All interactions with the Birilium Token are performed at the user’s own risk and discretion.
+
+4. No Financial or Investment Advice
+
+Nothing in the Birilium project, website, or communication channels should be construed as financial, investment, or legal advice.
+The creators and contributors are not licensed financial advisors, and the Token should not be purchased or held for speculative or investment purposes.
+
+5. Jurisdiction and Applicable Law
+
+This project is fully decentralized, not managed or operated by any legal entity.
+However, in the event of a legal dispute, interpretation, or claim, the applicable jurisdiction shall be determined by the user’s country of residence, and the creators disclaim any governing authority or responsibility.
+
+6. Acknowledgment
+
+By acquiring, holding, or interacting with the Birilium Token, users acknowledge that they:
+
+Understand and accept the experimental and entertainment nature of the project;
+
+Have not relied on any statement, promise, or guarantee of profit;
+
+Fully assume all risks associated with cryptocurrency ownership and blockchain use.

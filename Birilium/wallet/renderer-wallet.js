@@ -1492,3 +1492,89 @@ if (typeof require !== 'undefined') {
         // Not in Electron context, ignore
     }
 }
+
+// Contact Modal Functionality
+document.addEventListener('DOMContentLoaded', () => {
+    const contactBtn = document.getElementById('contactBtn');
+    const contactModal = document.getElementById('contactModal');
+    const closeContactModal = document.getElementById('closeContactModal');
+    const contactForm = document.getElementById('contactForm');
+    const contactStatus = document.getElementById('contactStatus');
+
+    // Open contact modal
+    if (contactBtn) {
+        contactBtn.addEventListener('click', () => {
+            contactModal.classList.remove('hidden');
+        });
+    }
+
+    // Close contact modal
+    if (closeContactModal) {
+        closeContactModal.addEventListener('click', () => {
+            contactModal.classList.add('hidden');
+            contactForm.reset();
+            contactStatus.classList.add('hidden');
+        });
+    }
+
+    // Close modal when clicking outside
+    if (contactModal) {
+        contactModal.addEventListener('click', (e) => {
+            if (e.target === contactModal) {
+                contactModal.classList.add('hidden');
+                contactForm.reset();
+                contactStatus.classList.add('hidden');
+            }
+        });
+    }
+
+    // Handle contact form submission
+    if (contactForm) {
+        contactForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById('contactName').value;
+            const phone = document.getElementById('contactPhone').value;
+            const email = document.getElementById('contactEmail').value;
+            const message = document.getElementById('contactMessage').value;
+
+            contactStatus.classList.remove('hidden', 'success', 'error');
+            contactStatus.textContent = 'Sending message...';
+
+            try {
+                // Send contact form data to backend
+                const response = await fetch('http://localhost:3001/api/contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name,
+                        phone,
+                        email,
+                        message,
+                        timestamp: Date.now()
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    contactStatus.classList.add('success');
+                    contactStatus.textContent = 'Message sent successfully! We\'ll get back to you soon.';
+                    contactForm.reset();
+                    setTimeout(() => {
+                        contactModal.classList.add('hidden');
+                        contactStatus.classList.add('hidden');
+                    }, 3000);
+                } else {
+                    throw new Error(result.error || 'Failed to send message');
+                }
+            } catch (error) {
+                console.error('Contact form error:', error);
+                contactStatus.classList.add('error');
+                contactStatus.textContent = 'Failed to send message. Please try again or email us directly at biriliumcoin@gmail.com';
+            }
+        });
+    }
+});
