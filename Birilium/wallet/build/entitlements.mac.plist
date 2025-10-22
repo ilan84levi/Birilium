@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Allow JIT compilation (required for V8 JavaScript engine) -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Allow unsigned executable memory (required for Electron) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Allow DYLD environment variables (required for Node.js) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- Network access (required for blockchain node communication) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Network server (required for local API server) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- Disable library validation (allows loading Node.js native modules) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- File access (for wallet data, logs, etc.) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Hardened Runtime (required for notarization) -->
+    <!-- This file enables necessary entitlements while maintaining security -->
+  </dict>
+</plist>

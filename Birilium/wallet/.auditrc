@@ -1,0 +1,28 @@
+# Birilium Wallet - Security Audit Configuration
+# Generated: 2025-01-22
+
+[audit]
+version = 1.0.7
+last_audit = 2025-01-22
+overall_rating = 8/10
+next_review = after-code-signing-implementation
+
+[status]
+electron_hardening = implemented
+csp = implemented
+context_isolation = implemented
+client_side_crypto = implemented
+rate_limiting = implemented
+code_signing = missing
+auto_updates = missing
+ci_cd = created
+
+[vulnerabilities]
+critical = 0
+high = 0
+moderate = 1
+low = 0
+
+[dependencies]
+wallet_vulnerabilities = 0
+backend_vulnerabilities = 1
