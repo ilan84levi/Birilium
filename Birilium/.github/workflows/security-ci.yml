@@ -1,0 +1,146 @@
+name: Security CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  wallet-security-audit:
+    name: Wallet Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Birilium/wallet/package-lock.json
+
+      - name: Install wallet dependencies
+        working-directory: Birilium/wallet
+        run: npm ci --omit=dev
+
+      - name: Audit wallet dependencies
+        working-directory: Birilium/wallet
+        run: |
+          echo "::group::NPM Audit"
+          npm audit --production --audit-level=moderate || true
+          echo "::endgroup::"
+
+      - name: Run NodeSecure CI
+        working-directory: Birilium/wallet
+        run: |
+          echo "::group::NodeSecure Analysis"
+          npx @nodesecure/ci --reporter=console || true
+          echo "::endgroup::"
+
+      - name: Check for vulnerable dependencies (retire.js)
+        working-directory: Birilium/wallet
+        run: |
+          echo "::group::Retire.js Scan"
+          npx retire --colors || true
+          echo "::endgroup::"
+
+  backend-security-audit:
+    name: Backend Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Birilium/wallet/node-backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: Birilium/wallet/node-backend
+        run: npm ci --omit=dev
+
+      - name: Audit backend dependencies
+        working-directory: Birilium/wallet/node-backend
+        run: |
+          echo "::group::NPM Audit (Backend)"
+          npm audit --production --audit-level=moderate
+          echo "::endgroup::"
+
+      - name: Run NodeSecure CI (Backend)
+        working-directory: Birilium/wallet/node-backend
+        run: |
+          echo "::group::NodeSecure Analysis (Backend)"
+          npx @nodesecure/ci --reporter=console || true
+          echo "::endgroup::"
+
+  electron-security-check:
+    name: Electron Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Electronegativity
+        run: npm install -g @doyensec/electronegativity
+
+      - name: Run Electronegativity scan
+        working-directory: Birilium/wallet
+        run: |
+          echo "::group::Electronegativity Scan"
+          electronegativity -i . -o electronegativity-report.json || true
+          cat electronegativity-report.json
+          echo "::endgroup::"
+
+      - name: Upload Electronegativity report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: electronegativity-report
+          path: Birilium/wallet/electronegativity-report.json
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
