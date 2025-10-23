@@ -6,14 +6,15 @@
     <!-- SECURITY: Content Security Policy to prevent XSS and code injection -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self';
-                   script-src 'self';
+                   script-src 'self' https://www.paypal.com 'unsafe-inline';
                    style-src 'self' 'unsafe-inline';
-                   img-src 'self' data: blob:;
-                   connect-src 'self' http://localhost:* https://api.paypal.com https://www.paypal.com;
+                   img-src 'self' data: blob: https://www.paypal.com https://*.paypal.com;
+                   connect-src 'self' http://localhost:* https://api.paypal.com https://www.paypal.com https://*.paypal.com;
                    font-src 'self';
                    object-src 'none';
                    base-uri 'self';
-                   form-action 'self';
+                   form-action 'self' https://www.paypal.com;
+                   frame-src https://www.paypal.com https://*.paypal.com;
                    frame-ancestors 'none';">
     <title>Birilium Wallet</title>
     <link rel="stylesheet" href="styles.css">
