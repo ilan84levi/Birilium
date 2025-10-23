@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Terms Modal</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .test { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Terms Modal Debug</h1>
+
+    <div class="test">
+        <h3>Test 1: Can you see this checkbox?</h3>
+        <input type="checkbox" id="test1"> Check this box
+    </div>
+
+    <div class="test">
+        <h3>Test 2: Can you click this button?</h3>
+        <button onclick="alert('Button works!')">Click Me</button>
+    </div>
+
+    <div class="test">
+        <h3>Test 3: Terms Checkbox Test</h3>
+        <input type="checkbox" id="agreeCheckbox">
+        <span>I have read and agree to the Terms of Use</span>
+        <br><br>
+        <button id="acceptTermsBtn" disabled>Accept & Continue</button>
+    </div>
+
+    <div class="test">
+        <h3>Test 4: Clear localStorage</h3>
+        <button onclick="clearTerms()">Clear Terms Acceptance</button>
+        <button onclick="checkTerms()">Check Terms Status</button>
+    </div>
+
+    <script>
+        // Test 3: Same logic as your app
+        const agreeCheckbox = document.getElementById('agreeCheckbox');
+        const acceptTermsBtn = document.getElementById('acceptTermsBtn');
+
+        agreeCheckbox.addEventListener('change', () => {
+            acceptTermsBtn.disabled = !agreeCheckbox.checked;
+            console.log('Checkbox changed:', agreeCheckbox.checked);
+        });
+
+        acceptTermsBtn.addEventListener('click', () => {
+            alert('Terms accepted! This would normally hide the modal.');
+            localStorage.setItem('biriliumTermsAccepted', 'true');
+        });
+
+        // Test 4 functions
+        function clearTerms() {
+            localStorage.removeItem('biriliumTermsAccepted');
+            alert('Terms acceptance cleared from localStorage');
+        }
+
+        function checkTerms() {
+            const termsAccepted = localStorage.getItem('biriliumTermsAccepted');
+            alert('Terms accepted: ' + termsAccepted);
+        }
+
+        console.log('Debug page loaded. Check console for errors.');
+    </script>
+</body>
+</html>
