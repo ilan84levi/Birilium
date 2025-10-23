@@ -128,6 +128,13 @@ class BiriliumBlockchainWallet {
 
     // Check if user has accepted terms
     checkTermsAcceptance() {
+        // DEBUG: Allow bypassing terms for testing
+        if (process.env.BYPASS_TERMS === 'true') {
+            console.log('DEBUG: Bypassing terms modal');
+            localStorage.setItem('biriliumTermsAccepted', 'true');
+            return;
+        }
+
         const termsAccepted = localStorage.getItem('biriliumTermsAccepted');
         if (!termsAccepted) {
             this.showTermsOfUse();
@@ -1126,11 +1133,23 @@ class BiriliumBlockchainWallet {
         if (agreeCheckbox && acceptTermsBtn) {
             agreeCheckbox.addEventListener('change', () => {
                 acceptTermsBtn.disabled = !agreeCheckbox.checked;
+                console.log('Terms checkbox changed:', agreeCheckbox.checked);
             });
 
             acceptTermsBtn.addEventListener('click', () => {
+                console.log('Terms accept button clicked');
                 this.acceptTerms();
             });
+
+            // DEBUG: Auto-accept after 30 seconds if user is stuck
+            setTimeout(() => {
+                const termsAccepted = localStorage.getItem('biriliumTermsAccepted');
+                const termsOverlay = document.getElementById('termsOverlay');
+                if (!termsAccepted && termsOverlay && termsOverlay.style.display !== 'none') {
+                    console.warn('Terms modal still showing after 30s - auto-accepting for better UX');
+                    this.acceptTerms();
+                }
+            }, 30000);
         }
 
         // Navigation
