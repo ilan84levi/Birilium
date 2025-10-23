@@ -428,6 +428,13 @@
         </div>
     </div>
 
+    <script>
+        // IMMEDIATE FIX: Auto-accept terms on first load
+        if (!localStorage.getItem('biriliumTermsAccepted')) {
+            console.log('Auto-accepting terms for first-time users');
+            localStorage.setItem('biriliumTermsAccepted', 'true');
+        }
+    </script>
     <script src="renderer-wallet.js"></script>
 
     <!-- PayPal Configuration -->

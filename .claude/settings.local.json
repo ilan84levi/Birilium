@@ -55,7 +55,13 @@
       "Bash(cat:*)",
       "Bash(npm install:*)",
       "Bash(echo:*)",
-      "Bash(npm audit:*)"
+      "Bash(npm audit:*)",
+      "Bash(npm update:*)",
+      "Bash(cmd /c \"tasklist | findstr -i electron\")",
+      "Bash(cmd /c \"taskkill /F /IM electron.exe 2>nul\")",
+      "Bash(cmd /c \"for /f \"\"tokens=5\"\" %a in (''netstat -ano ^| findstr :3001 ^| findstr LISTENING'') do taskkill /PID %a /F /T 2>nul\")",
+      "Bash(cmd /c \"for /f \"\"tokens=5\"\" %a in (''netstat -ano ^| findstr :6001 ^| findstr LISTENING'') do taskkill /PID %a /F /T 2>nul\")",
+      "Bash(cmd /c \"taskkill /F /IM electron.exe 2>nul & taskkill /F /IM node.exe 2>nul\")"
     ],
     "deny": [],
     "ask": []
