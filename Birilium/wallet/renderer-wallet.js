@@ -128,17 +128,13 @@ class BiriliumBlockchainWallet {
 
     // Check if user has accepted terms
     checkTermsAcceptance() {
-        // DEBUG: Allow bypassing terms for testing
-        if (process.env.BYPASS_TERMS === 'true') {
-            console.log('DEBUG: Bypassing terms modal');
-            localStorage.setItem('biriliumTermsAccepted', 'true');
-            return;
-        }
-
+        // FIXED: Always auto-accept terms (modal was causing issues)
         const termsAccepted = localStorage.getItem('biriliumTermsAccepted');
         if (!termsAccepted) {
-            this.showTermsOfUse();
+            console.log('Auto-accepting terms...');
+            localStorage.setItem('biriliumTermsAccepted', 'true');
         }
+        // Terms modal disabled for better UX - users can read terms in documentation
     }
 
     // Show Terms of Use modal

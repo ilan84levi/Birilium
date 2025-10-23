@@ -1,0 +1,81 @@
+
+> birilium-wallet@1.0.6 start
+> electron .
+
+
+====== ELECTRON APP READY ======
+====== ELECTRON APP READY ======
+==> Attempting to start blockchain node...
+==> startBlockchainNode() called
+==> NODE_PATH: D:\birilium2claude\Birilium\wallet\node-backend\node.js
+==> Checking if node.js exists...
+==> node.js file found!
+==> Starting integrated blockchain node...
+==> Node path: D:\birilium2claude\Birilium\wallet\node-backend\node.js
+==> Working directory: D:\birilium2claude\Birilium\wallet\node-backend
+==> Checking for .env file at: D:\birilium2claude\Birilium\wallet\node-backend\.env
+==> .env file found, loading...
+==> About to spawn node process...
+==> Command: node D:\birilium2claude\Birilium\wallet\node-backend\node.js
+==> Working dir: D:\birilium2claude\Birilium\wallet\node-backend
+==> User data path: C:\Users\ilan8\AppData\Roaming\birilium-wallet
+==> Logs path: C:\Users\ilan8\AppData\Roaming\birilium-wallet\logs
+==> Data path: C:\Users\ilan8\AppData\Roaming\birilium-wallet\data
+==> Node process spawned successfully
+==> Waiting for node startup confirmation...
+[Node] [dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+
+[Node stdout] [dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+
+[Node] Connecting to MongoDB...
+
+[Node stdout] Connecting to MongoDB...
+
+[Node] =================================
+
+[Node stdout] =================================
+
+[Node]   BIRILIUM BLOCKCHAIN NODE v2.1
+=================================
+HTTP API: http://localhost:3001
+P2P Port: 6001
+Metrics: http://localhost:3001/metrics
+=================================
+
+[Node stdout]   BIRILIUM BLOCKCHAIN NODE v2.1
+=================================
+HTTP API: http://localhost:3001
+P2P Port: 6001
+Metrics: http://localhost:3001/metrics
+=================================
+
+✓ Blockchain node started successfully
+==> Blockchain node started successfully!
+[Node] [P2P] WebSocket server (WS - UNENCRYPTED) listening on port: 6001
+
+[Node stdout] [P2P] WebSocket server (WS - UNENCRYPTED) listening on port: 6001
+
+[Node Error] [P2P] ⚠️  WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.
+
+[Node stderr] [P2P] ⚠️  WARNING: TLS disabled. Enable with ENABLE_P2P_TLS=true for production.
+
+[Node] ✓ Connected to MongoDB: birilium
+
+[Node stdout] ✓ Connected to MongoDB: birilium
+
+[Node] ✓ Database indexes created
+
+[Node stdout] ✓ Database indexes created
+
+[Node] ✓ Loaded 21 blocks from database
+
+[Node stdout] ✓ Loaded 21 blocks from database
+
+[Node] ✓ Blockchain loaded from database (21 blocks)
+
+[Node stdout] ✓ Blockchain loaded from database (21 blocks)
+
+Stopping blockchain node...
+Blockchain node exited with code null, signal SIGTERM
+==> Blockchain node exited with code null, signal SIGTERM
+✓ Blockchain node stopped

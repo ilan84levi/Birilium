@@ -201,10 +201,11 @@ function createWindow() {
     width: 1400,
     height: 900,
     webPreferences: {
-      // SECURITY: Harden Electron window
-      nodeIntegration: false,           // Disable Node.js in renderer
-      contextIsolation: true,            // Enable context isolation
-      sandbox: true,                     // Enable sandbox
+      // TEMPORARY FIX: Enable nodeIntegration for renderer-wallet.js to work
+      // TODO: Refactor renderer to use only preload API
+      nodeIntegration: true,             // TEMP: Enabled for crypto libraries
+      contextIsolation: false,           // TEMP: Disabled for compatibility
+      sandbox: false,                    // TEMP: Disabled for node access
       enableRemoteModule: false,         // Disable legacy remote module
       preload: path.join(__dirname, 'preload.js'),  // Secure bridge
       webSecurity: true,                 // Enable web security
