@@ -1,0 +1,120 @@
+========================================
+Birilium Node - Manual Deployment Commands
+For Digital Ocean Web Console
+========================================
+
+STEP 1: Open Digital Ocean Console
+-----------------------------------
+1. Go to: https://cloud.digitalocean.com/droplets
+2. Click on your "birilium-node" droplet
+3. Click "Console" button (top right, looks like >_)
+4. A terminal will open in your browser
+
+STEP 2: Copy and Paste These Commands
+--------------------------------------
+Paste each block ONE AT A TIME and wait for it to finish!
+
+========================================
+BLOCK 1: Update System & Install Node.js
+========================================
+apt update && apt upgrade -y && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt install -y nodejs git
+
+========================================
+BLOCK 2: Install MongoDB
+========================================
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor && echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list && apt update && apt install -y mongodb-org && systemctl start mongod && systemctl enable mongod
+
+========================================
+BLOCK 3: Install PM2
+========================================
+npm install -g pm2
+
+========================================
+BLOCK 4: Clone Birilium Repository
+========================================
+cd ~ && git clone https://github.com/ilan84levi/Birilium.git && cd Birilium/wallet/node-backend && npm install --production
+
+========================================
+BLOCK 5: Generate Secure Credentials
+========================================
+API_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") && ADMIN_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))") && NODE_PRIVATE_KEY=$(node -e "const EC = require('elliptic').ec; const ec = new EC('secp256k1'); console.log(ec.genKeyPair().getPrivate('hex'))") && echo "" && echo "=====================================" && echo "SAVE THESE CREDENTIALS:" && echo "=====================================" && echo "API Key: $API_KEY" && echo "Admin Password: $ADMIN_PASSWORD" && echo "Node Private Key: $NODE_PRIVATE_KEY" && echo "=====================================" && echo ""
+
+**IMPORTANT: Copy and save the credentials that appear!**
+
+========================================
+BLOCK 6: Create Configuration File
+========================================
+cat > .env << 'EOF'
+HTTP_PORT=3001
+P2P_PORT=6001
+NODE_ENV=production
+API_KEY=REPLACE_WITH_API_KEY_FROM_ABOVE
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=REPLACE_WITH_PASSWORD_FROM_ABOVE
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=birilium
+MAX_PEERS=50
+ENABLE_P2P_TLS=false
+NODE_PRIVATE_KEY=REPLACE_WITH_NODE_KEY_FROM_ABOVE
+LOG_LEVEL=info
+LOG_FILE=./logs/node.log
+PAYPAL_MODE=live
+PAYPAL_CLIENT_ID=AQWyciyninNqul8a60qGjkbez7hCmJ9GHXd7FMKZuXYn6AK_O2KbnFnqogFcWZaRWE4wwFREnlm7EaYe
+PAYPAL_CLIENT_SECRET=ECLr-XWrgnwJGY4yc5TYPWf6cSEhKI90jnehrO7HNd5nXTt6Mw-fHxcRO3tobsmMto-LRMsdm4YYXzvu
+PAYPAL_PLAN_ID=P-57Y69741R9575314SNDUCLPY
+CONTACT_EMAIL=biriliumcoin@gmail.com
+CONTACT_EMAIL_PASSWORD=oukk hblj vnfd yebp
+EOF
+
+**Now edit the file to add your credentials:**
+nano .env
+
+Find these lines:
+API_KEY=REPLACE_WITH_API_KEY_FROM_ABOVE
+ADMIN_PASSWORD=REPLACE_WITH_PASSWORD_FROM_ABOVE
+NODE_PRIVATE_KEY=REPLACE_WITH_NODE_KEY_FROM_ABOVE
+
+Replace with the actual values from BLOCK 5.
+
+Save: Ctrl+X, then Y, then Enter
+
+========================================
+BLOCK 7: Create Directories
+========================================
+mkdir -p logs data
+
+========================================
+BLOCK 8: Configure Firewall
+========================================
+ufw --force reset && ufw default deny incoming && ufw default allow outgoing && ufw allow 22/tcp && ufw allow 3001/tcp && ufw allow 6001/tcp && ufw --force enable
+
+========================================
+BLOCK 9: Start the Node
+========================================
+pm2 start node.js --name birilium-node --time && pm2 save && pm2 startup systemd -u root --hp /root
+
+========================================
+BLOCK 10: Verify It's Working
+========================================
+sleep 5 && pm2 status && curl http://localhost:3001/health
+
+You should see JSON output with blockchain data!
+
+========================================
+DONE!
+========================================
+
+Your node is now running at:
+- HTTP API: http://159.65.96.82:3001
+- P2P: ws://159.65.96.82:6001
+
+Test from your computer:
+curl http://159.65.96.82:3001/health
+
+========================================
+Useful Commands:
+========================================
+pm2 status                  # Check if running
+pm2 logs birilium-node      # View logs
+pm2 restart birilium-node   # Restart node
+pm2 stop birilium-node      # Stop node

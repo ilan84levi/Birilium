@@ -1213,7 +1213,7 @@ const initMessageHandler = (ws, remoteAddress, onHandshakeComplete) => {
                     write(ws, responseChainMsg());
                     break;
                 case MessageType.RESPONSE_BLOCKCHAIN:
-                    handleBlockchainResponse(message.data, peerId);
+                    handleBlockchainResponse(message.data, peerId, ws);
                     break;
                 case MessageType.NEW_TRANSACTION:
                     handleNewTransaction(message.data, peerId);
@@ -1293,7 +1293,7 @@ const connectToPeer = (newPeer) => {
     });
 };
 
-const handleBlockchainResponse = (receivedBlocks, peerId) => {
+const handleBlockchainResponse = (receivedBlocks, peerId, ws) => {
     if (receivedBlocks.length === 0) {
         console.log('Received empty blockchain');
         return;
@@ -1302,8 +1302,9 @@ const handleBlockchainResponse = (receivedBlocks, peerId) => {
     const latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
     const latestBlockHeld = biriliumChain.getLatestBlock();
 
-    if (latestBlockReceived.timestamp > latestBlockHeld.timestamp) {
-        console.log('Blockchain possibly behind. Need to sync.');
+    // Compare block indices (height) instead of timestamps to determine which chain is longer
+    if (latestBlockReceived.index > latestBlockHeld.index) {
+        console.log(`Blockchain possibly behind. Local: ${latestBlockHeld.index} blocks, Peer: ${latestBlockReceived.index} blocks`);
         if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
             console.log('Appending received block to chain');
             biriliumChain.chain.push(latestBlockReceived);
@@ -1315,6 +1316,12 @@ const handleBlockchainResponse = (receivedBlocks, peerId) => {
             console.log('Received blockchain is longer than current');
             replaceChain(receivedBlocks);
         }
+    } else if (latestBlockReceived.index < latestBlockHeld.index) {
+        console.log(`Peer blockchain is behind. Local: ${latestBlockHeld.index} blocks, Peer: ${latestBlockReceived.index} blocks. Sending our chain.`);
+        // Send our longer chain to the peer
+        write(ws, responseChainMsg());
+    } else {
+        console.log(`Blockchains are synced at block ${latestBlockHeld.index}`);
     }
 };
 

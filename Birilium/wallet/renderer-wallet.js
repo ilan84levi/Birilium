@@ -569,8 +569,23 @@ class BiriliumBlockchainWallet {
             return;
         }
 
+        // ADMIN BYPASS: Check if admin credentials match environment variables
+        const ADMIN_USERNAME = 'levi84';  // From .env
+        const ADMIN_PASSWORD = '5384';    // From .env
+
+        // If wallet address matches admin username format, grant unlimited mining
+        const isAdmin = this.walletAddress && (
+            this.walletAddress.includes(ADMIN_USERNAME) ||
+            localStorage.getItem('biriliumAdminMode') === 'true'
+        );
+
+        if (isAdmin) {
+            console.log('[ADMIN MODE] Unlimited mining enabled');
+            this.hasSubscription = true;  // Grant premium access
+        }
+
         // Check free mining limit for non-premium users - FETCH REAL-TIME DATA
-        if (!this.hasSubscription) {
+        if (!this.hasSubscription && !isAdmin) {
             try {
                 // Fetch current transactions from blockchain (not cached)
                 const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
