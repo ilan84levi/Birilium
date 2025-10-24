@@ -295,7 +295,7 @@ You need a **Personal/Buyer account** to test the subscription purchase.
 ### "Sandbox mode banner not showing"
 - Verify `PAYPAL_SANDBOX_MODE = true` (Line 380)
 - Clear browser cache and reload
-- Check if `#paypal-button-container-P-57Y69741R9575314SNDUCLPY` element exists
+- Check if `#paypal-button-container-P-2AE31843879973003ND5UCTA` element exists
 
 ### "PayPal redirects to live site (www.paypal.com)"
 - This means Sandbox mode is NOT active
