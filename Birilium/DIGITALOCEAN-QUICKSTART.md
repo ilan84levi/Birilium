@@ -170,7 +170,7 @@ Add:
 PAYPAL_MODE=live
 PAYPAL_CLIENT_ID=your_live_client_id
 PAYPAL_CLIENT_SECRET=your_live_secret
-PAYPAL_PLAN_ID=P-2AE31843879973003ND5UCTA
+PAYPAL_PLAN_ID=your_plan_id
 ```
 
 Save and restart:
