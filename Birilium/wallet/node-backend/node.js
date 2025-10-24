@@ -3,6 +3,7 @@ require('dotenv').config(); // Load environment variables
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const helmet = require('helmet');
 const WebSocket = require('ws');
 const https = require('https');
 const fs = require('fs');
@@ -65,6 +66,21 @@ const miningLimiter = rateLimit({
 });
 
 // Middleware
+// Security headers with Helmet.js
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://www.paypal.com", "https://www.paypalobjects.com"],
+            frameSrc: ["'self'", "https://www.paypal.com"],
+            connectSrc: ["'self'", "https://api.paypal.com", "https://api-m.paypal.com"],
+            imgSrc: ["'self'", "data:", "https:"],
+            styleSrc: ["'self'", "'unsafe-inline'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false  // Allow PayPal iframes
+}));
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -98,7 +114,26 @@ const authenticateAPIKey = (req, res, next) => {
 
 // Admin authentication middleware
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// Validate admin password security
+if (!ADMIN_PASSWORD || ADMIN_PASSWORD === 'admin' || ADMIN_PASSWORD === 'admin123' || ADMIN_PASSWORD.length < 8) {
+    console.error('');
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('🚨 SECURITY ERROR: Weak or missing ADMIN_PASSWORD');
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('');
+    console.error('For security reasons, you MUST set a strong ADMIN_PASSWORD');
+    console.error('in your .env file with at least 8 characters.');
+    console.error('');
+    console.error('Example in .env:');
+    console.error('  ADMIN_PASSWORD=MyStr0ngP@ssw0rd!2025');
+    console.error('');
+    console.error('The server will not start without a secure admin password.');
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('');
+    process.exit(1);
+}
 const authenticateAdmin = (req, res, next) => {
     const username = req.headers['x-admin-username'] || req.body.adminUsername || req.query.adminUsername;
     const password = req.headers['x-admin-password'] || req.body.adminPassword || req.query.adminPassword;

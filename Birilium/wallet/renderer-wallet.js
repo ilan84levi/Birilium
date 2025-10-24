@@ -190,7 +190,12 @@ class BiriliumBlockchainWallet {
             const lockedWalletAddress = document.getElementById('lockedWalletAddress');
             if (lockedWalletAddress && this.walletAddress) {
                 const shortAddress = this.walletAddress.substring(0, 10) + '...' + this.walletAddress.substring(this.walletAddress.length - 10);
-                lockedWalletAddress.innerHTML = `<small style="color: #6c757d;">Wallet: ${shortAddress}</small>`;
+                // Use textContent to prevent XSS
+                const small = document.createElement('small');
+                small.style.color = '#6c757d';
+                small.textContent = `Wallet: ${shortAddress}`;
+                lockedWalletAddress.innerHTML = '';
+                lockedWalletAddress.appendChild(small);
             }
         }
     }
@@ -569,15 +574,9 @@ class BiriliumBlockchainWallet {
             return;
         }
 
-        // ADMIN BYPASS: Check if admin credentials match environment variables
-        const ADMIN_USERNAME = 'levi84';  // From .env
-        const ADMIN_PASSWORD = '5384';    // From .env
-
-        // If wallet address matches admin username format, grant unlimited mining
-        const isAdmin = this.walletAddress && (
-            this.walletAddress.includes(ADMIN_USERNAME) ||
-            localStorage.getItem('biriliumAdminMode') === 'true'
-        );
+        // ADMIN BYPASS: Check localStorage flag (must be set via developer console)
+        // For security: No hardcoded credentials in client code
+        const isAdmin = localStorage.getItem('biriliumAdminMode') === 'true';
 
         if (isAdmin) {
             console.log('[ADMIN MODE] Unlimited mining enabled');
@@ -1118,17 +1117,32 @@ class BiriliumBlockchainWallet {
             txItem.className = `tx-item ${txType}`;
             const date = new Date(tx.timestamp).toLocaleString();
 
-            txItem.innerHTML = `
-                <div>
-                    <strong>${txLabel}</strong><br>
-                    ${txDetails}<br>
-                    <small>${date}</small>
-                </div>
-                <div style="text-align: right; color: ${amountColor};">
-                    <strong>${amountPrefix}${tx.amount.toFixed(4)} BRL</strong>
-                </div>
-            `;
+            // Build transaction item securely using DOM methods to prevent XSS
+            const leftDiv = document.createElement('div');
+            const labelStrong = document.createElement('strong');
+            labelStrong.textContent = txLabel;
+            leftDiv.appendChild(labelStrong);
+            leftDiv.appendChild(document.createElement('br'));
 
+            if (txDetails) {
+                const detailsText = document.createTextNode(txDetails);
+                leftDiv.appendChild(detailsText);
+                leftDiv.appendChild(document.createElement('br'));
+            }
+
+            const dateSmall = document.createElement('small');
+            dateSmall.textContent = date;
+            leftDiv.appendChild(dateSmall);
+
+            const rightDiv = document.createElement('div');
+            rightDiv.style.textAlign = 'right';
+            rightDiv.style.color = amountColor;
+            const amountStrong = document.createElement('strong');
+            amountStrong.textContent = `${amountPrefix}${tx.amount.toFixed(4)} BRL`;
+            rightDiv.appendChild(amountStrong);
+
+            txItem.appendChild(leftDiv);
+            txItem.appendChild(rightDiv);
             txList.appendChild(txItem);
         });
     }
