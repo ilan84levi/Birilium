@@ -20,7 +20,7 @@
   "author": "Birilium Team",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.0.0",
+    "electron": "^35.7.5",
     "electron-builder": "^24.9.1"
   },
   "build": {
@@ -50,14 +50,21 @@
       {
         "from": "node-backend",
         "to": "app/node-backend",
-        "filter": ["**/*", "!data/**", "!logs/**", "!**/*.log"]
+        "filter": [
+          "**/*",
+          "!data/**",
+          "!logs/**",
+          "!**/*.log"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",
@@ -73,7 +80,10 @@
       "perMachine": false
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.finance",
       "icon": "build/icon.icns"
     },
@@ -92,7 +102,10 @@
       ]
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Finance",
       "icon": "build/icon.png"
     }

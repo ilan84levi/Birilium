@@ -72,7 +72,13 @@
       "Bash(cmd /c \"dir D:\\birilium2claude\\Birilium\\wallet\\dist\\*.exe\")",
       "Bash(cmd /c \"cd D:\\birilium2claude\\Birilium\\wallet && npm run build:win\")",
       "Bash(git log:*)",
-      "Bash(git rev-list:*)"
+      "Bash(git rev-list:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git stash pop:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
