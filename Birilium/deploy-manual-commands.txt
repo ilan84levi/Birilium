@@ -59,11 +59,11 @@ NODE_PRIVATE_KEY=REPLACE_WITH_NODE_KEY_FROM_ABOVE
 LOG_LEVEL=info
 LOG_FILE=./logs/node.log
 PAYPAL_MODE=live
-PAYPAL_CLIENT_ID=ASEpZjGMz4gxMo1FC7tBv8qQeCJsEuqEZky9pKIuRrpc9z4KSApXZw17GEGijoO2zkQLNsEn7hC34A-a
-PAYPAL_CLIENT_SECRET=EHitfF9d-6cUXe8CI4B89hZ7WmygoTgCaaMOLUlQKL-PaRywjkUs-OLEMl6t6SaAQfQ-PoPp2cD-9u6J
-PAYPAL_PLAN_ID=P-2AE31843879973003ND5UCTA
-CONTACT_EMAIL=biriliumcoin@gmail.com
-CONTACT_EMAIL_PASSWORD=REDACTED_EMAIL_PASSWORD
+PAYPAL_CLIENT_ID=your_live_paypal_client_id_here
+PAYPAL_CLIENT_SECRET=your_live_paypal_client_secret_here
+PAYPAL_PLAN_ID=your_paypal_subscription_plan_id_here
+CONTACT_EMAIL=your_contact_email@example.com
+CONTACT_EMAIL_PASSWORD=your_email_app_password_here
 EOF
 
 **Now edit the file to add your credentials:**
