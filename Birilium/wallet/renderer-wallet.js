@@ -524,7 +524,7 @@ class BiriliumBlockchainWallet {
                 const stats = await response.json();
 
                 const MAX_SUPPLY = 21000000; // 21 million BRL total supply
-                const totalMined = stats.totalSupply || 0;
+                const totalMined = stats.currentSupply || 0;
                 const remaining = MAX_SUPPLY - totalMined;
 
                 const totalSupplyEl = document.getElementById('totalSupply');
