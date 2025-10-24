@@ -66,7 +66,13 @@
       "Bash(test:*)",
       "Bash(cmd /c \"for /f \"tokens=5\" %a in (''''netstat -ano ^| findstr :6001 ^| findstr LISTENING'''') do taskkill /PID %a /F /T 2>nul\")",
       "Bash(cmd /c \"taskkill /F /IM node.exe /T 2>nul & taskkill /F /IM electron.exe /T 2>nul & timeout /t 3 /nobreak >nul\")",
-      "Bash(cmd /c \"taskkill /F /IM electron.exe 2>nul & taskkill /F /IM node.exe 2>nul & timeout /t 3 /nobreak >nul\")"
+      "Bash(cmd /c \"taskkill /F /IM electron.exe 2>nul & taskkill /F /IM node.exe 2>nul & timeout /t 3 /nobreak >nul\")",
+      "Bash(cmd /c \"taskkill /F /IM electron.exe 2>nul & taskkill /F /IM node.exe 2>nul & timeout /t 2 /nobreak >nul\")",
+      "Bash(cmd /c \"cd /d D:\\birilium2claude\\Birilium\\wallet && npm start\")",
+      "Bash(cmd /c \"dir D:\\birilium2claude\\Birilium\\wallet\\dist\\*.exe\")",
+      "Bash(cmd /c \"cd D:\\birilium2claude\\Birilium\\wallet && npm run build:win\")",
+      "Bash(git log:*)",
+      "Bash(git rev-list:*)"
     ],
     "deny": [],
     "ask": []
