@@ -713,7 +713,7 @@ app.get('/api/paypal-config', (req, res) => {
     try {
         const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
         const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-        const PAYPAL_PLAN_ID = 'P-57Y69741R9575314SNDUCLPY'; // Premium Mining Plan
+        const PAYPAL_PLAN_ID = process.env.PAYPAL_PLAN_ID; // Premium Mining Plan
 
         // Return PayPal config to frontend
         res.json({

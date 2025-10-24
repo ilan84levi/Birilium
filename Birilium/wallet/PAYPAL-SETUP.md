@@ -9,7 +9,7 @@ If you don't see the PayPal subscription buttons in the "Mining Subscription" ta
 Add this line to `wallet/node-backend/.env`:
 
 ```bash
-PAYPAL_PLAN_ID=P-57Y69741R9575314SNDUCLPY
+PAYPAL_PLAN_ID=P-2AE31843879973003ND5UCTA
 ```
 
 ## 📋 Complete PayPal Configuration
