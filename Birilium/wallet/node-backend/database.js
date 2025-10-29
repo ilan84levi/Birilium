@@ -1,51 +1,130 @@
-const { MongoClient } = require('mongodb');
+const Database = require('better-sqlite3');
+const path = require('path');
+const fs = require('fs');
 
-class Database {
+class DatabaseManager {
     constructor() {
-        this.client = null;
         this.db = null;
         this.isConnected = false;
 
-        // Default connection string (can be overridden via environment variable)
-        this.connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-        this.dbName = process.env.MONGODB_DB || 'birilium';
+        // Database path - use environment variable or default to data folder
+        const dbPath = process.env.SQLITE_DB_PATH || path.join(__dirname, 'data', 'birilium.db');
+        this.dbPath = dbPath;
+
+        // Ensure data directory exists
+        const dataDir = path.dirname(dbPath);
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
     }
 
     async connect() {
         try {
-            console.log('Connecting to MongoDB...');
-            this.client = new MongoClient(this.connectionString);
-            await this.client.connect();
-            this.db = this.client.db(this.dbName);
+            console.log('Connecting to SQLite database...');
+            console.log('Database path:', this.dbPath);
+
+            this.db = new Database(this.dbPath);
             this.isConnected = true;
-            console.log(`✓ Connected to MongoDB: ${this.dbName}`);
 
-            // Create indexes for better performance
-            await this.createIndexes();
+            // Enable WAL mode for better performance
+            this.db.pragma('journal_mode = WAL');
 
+            // Create tables
+            this.createTables();
+
+            // Create indexes
+            this.createIndexes();
+
+            console.log(`✓ Connected to SQLite database: ${this.dbPath}`);
             return true;
         } catch (error) {
-            console.error('MongoDB connection failed:', error.message);
+            console.error('SQLite connection failed:', error.message);
             console.log('Continuing without database persistence (memory-only mode)');
             this.isConnected = false;
             return false;
         }
     }
 
-    async createIndexes() {
+    createTables() {
+        if (!this.isConnected) return;
+
+        try {
+            // Blocks table
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS blocks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    block_index INTEGER UNIQUE NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    transactions TEXT NOT NULL,
+                    previousHash TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    nonce INTEGER NOT NULL,
+                    createdAt INTEGER NOT NULL
+                )
+            `);
+
+            // Transactions table
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    txId TEXT,
+                    fromAddress TEXT,
+                    toAddress TEXT,
+                    amount REAL,
+                    timestamp INTEGER,
+                    signature TEXT,
+                    blockHash TEXT,
+                    blockIndex INTEGER,
+                    blockTimestamp INTEGER
+                )
+            `);
+
+            // State table
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS state (
+                    type TEXT PRIMARY KEY,
+                    currentSupply REAL,
+                    difficulty INTEGER,
+                    lastUpdated INTEGER
+                )
+            `);
+
+            // PayPal subscriptions table (for admin features)
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subscriptionId TEXT UNIQUE NOT NULL,
+                    subscriberEmail TEXT NOT NULL,
+                    planId TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    startTime INTEGER NOT NULL,
+                    nextBillingTime INTEGER,
+                    createdAt INTEGER NOT NULL
+                )
+            `);
+
+            console.log('✓ Database tables created');
+        } catch (error) {
+            console.error('Error creating tables:', error.message);
+        }
+    }
+
+    createIndexes() {
         if (!this.isConnected) return;
 
         try {
             // Index on block index for fast lookups
-            await this.db.collection('blocks').createIndex({ index: 1 }, { unique: true });
-
-            // Index on block hash
-            await this.db.collection('blocks').createIndex({ hash: 1 });
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_blocks_index ON blocks(block_index)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash)');
 
             // Index on transaction addresses
-            await this.db.collection('transactions').createIndex({ fromAddress: 1 });
-            await this.db.collection('transactions').createIndex({ toAddress: 1 });
-            await this.db.collection('transactions').createIndex({ timestamp: -1 });
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(fromAddress)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(toAddress)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_tx_timestamp ON transactions(blockTimestamp DESC)');
+
+            // Index on subscriptions
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(subscriberEmail)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)');
 
             console.log('✓ Database indexes created');
         } catch (error) {
@@ -57,34 +136,45 @@ class Database {
         if (!this.isConnected) return false;
 
         try {
-            const blockData = {
-                index: blockIndex,
-                timestamp: block.timestamp,
-                transactions: block.transactions,
-                previousHash: block.previousHash,
-                hash: block.hash,
-                nonce: block.nonce,
-                createdAt: new Date()
-            };
+            // Serialize transactions to JSON
+            const transactionsJSON = JSON.stringify(block.transactions);
 
-            await this.db.collection('blocks').updateOne(
-                { index: blockIndex },
-                { $set: blockData },
-                { upsert: true }
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO blocks (block_index, timestamp, transactions, previousHash, hash, nonce, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            stmt.run(
+                blockIndex,
+                block.timestamp,
+                transactionsJSON,
+                block.previousHash,
+                block.hash,
+                block.nonce,
+                Date.now()
             );
 
             // Save transactions separately for easier querying
             if (block.transactions && block.transactions.length > 0) {
-                const txDocs = block.transactions.map(tx => ({
-                    ...tx,
-                    blockHash: block.hash,
-                    blockIndex: blockIndex,
-                    blockTimestamp: block.timestamp
-                }));
+                const txStmt = this.db.prepare(`
+                    INSERT OR IGNORE INTO transactions
+                    (txId, fromAddress, toAddress, amount, timestamp, signature, blockHash, blockIndex, blockTimestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `);
 
-                await this.db.collection('transactions').insertMany(txDocs, { ordered: false }).catch(() => {
-                    // Ignore duplicate key errors
-                });
+                for (const tx of block.transactions) {
+                    txStmt.run(
+                        tx.txId || null,
+                        tx.fromAddress || null,
+                        tx.toAddress,
+                        tx.amount,
+                        tx.timestamp,
+                        tx.signature || null,
+                        block.hash,
+                        blockIndex,
+                        block.timestamp
+                    );
+                }
             }
 
             return true;
@@ -98,15 +188,23 @@ class Database {
         if (!this.isConnected) return null;
 
         try {
-            const blocks = await this.db.collection('blocks')
-                .find({})
-                .sort({ index: 1 })
-                .toArray();
+            const stmt = this.db.prepare('SELECT * FROM blocks ORDER BY block_index ASC');
+            const rows = stmt.all();
 
-            if (blocks.length === 0) {
+            if (rows.length === 0) {
                 console.log('No blockchain data found in database');
                 return null;
             }
+
+            // Parse transactions JSON
+            const blocks = rows.map(row => ({
+                index: row.block_index,
+                timestamp: row.timestamp,
+                transactions: JSON.parse(row.transactions),
+                previousHash: row.previousHash,
+                hash: row.hash,
+                nonce: row.nonce
+            }));
 
             console.log(`✓ Loaded ${blocks.length} blocks from database`);
             return blocks;
@@ -120,18 +218,12 @@ class Database {
         if (!this.isConnected) return false;
 
         try {
-            await this.db.collection('state').updateOne(
-                { type: 'blockchain' },
-                {
-                    $set: {
-                        currentSupply: state.currentSupply,
-                        difficulty: state.difficulty,
-                        lastUpdated: new Date()
-                    }
-                },
-                { upsert: true }
-            );
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO state (type, currentSupply, difficulty, lastUpdated)
+                VALUES ('blockchain', ?, ?, ?)
+            `);
 
+            stmt.run(state.currentSupply, state.difficulty, Date.now());
             return true;
         } catch (error) {
             console.error('Error saving blockchain state:', error.message);
@@ -143,7 +235,8 @@ class Database {
         if (!this.isConnected) return null;
 
         try {
-            const state = await this.db.collection('state').findOne({ type: 'blockchain' });
+            const stmt = this.db.prepare("SELECT * FROM state WHERE type = 'blockchain'");
+            const state = stmt.get();
             return state;
         } catch (error) {
             console.error('Error loading blockchain state:', error.message);
@@ -155,17 +248,14 @@ class Database {
         if (!this.isConnected) return [];
 
         try {
-            const transactions = await this.db.collection('transactions')
-                .find({
-                    $or: [
-                        { fromAddress: address },
-                        { toAddress: address }
-                    ]
-                })
-                .sort({ blockTimestamp: -1 })
-                .limit(limit)
-                .toArray();
+            const stmt = this.db.prepare(`
+                SELECT * FROM transactions
+                WHERE fromAddress = ? OR toAddress = ?
+                ORDER BY blockTimestamp DESC
+                LIMIT ?
+            `);
 
+            const transactions = stmt.all(address, address, limit);
             return transactions;
         } catch (error) {
             console.error('Error getting transactions:', error.message);
@@ -177,8 +267,8 @@ class Database {
         if (!this.isConnected) return null;
 
         try {
-            const blockCount = await this.db.collection('blocks').countDocuments();
-            const txCount = await this.db.collection('transactions').countDocuments();
+            const blockCount = this.db.prepare('SELECT COUNT(*) as count FROM blocks').get().count;
+            const txCount = this.db.prepare('SELECT COUNT(*) as count FROM transactions').get().count;
             const state = await this.loadBlockchainState();
 
             return {
@@ -198,9 +288,10 @@ class Database {
         if (!this.isConnected) return false;
 
         try {
-            await this.db.collection('blocks').deleteMany({});
-            await this.db.collection('transactions').deleteMany({});
-            await this.db.collection('state').deleteMany({});
+            this.db.exec('DELETE FROM blocks');
+            this.db.exec('DELETE FROM transactions');
+            this.db.exec('DELETE FROM state');
+            this.db.exec('DELETE FROM subscriptions');
             console.log('✓ Database cleared');
             return true;
         } catch (error) {
@@ -209,13 +300,59 @@ class Database {
         }
     }
 
+    // PayPal subscription methods
+    async saveSubscription(subscription) {
+        if (!this.isConnected) return false;
+
+        try {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO subscriptions
+                (subscriptionId, subscriberEmail, planId, status, startTime, nextBillingTime, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            stmt.run(
+                subscription.id,
+                subscription.subscriber?.email_address || '',
+                subscription.plan_id,
+                subscription.status,
+                new Date(subscription.start_time).getTime(),
+                subscription.billing_info?.next_billing_time ? new Date(subscription.billing_info.next_billing_time).getTime() : null,
+                Date.now()
+            );
+
+            return true;
+        } catch (error) {
+            console.error('Error saving subscription:', error.message);
+            return false;
+        }
+    }
+
+    async getSubscriptions(status = null) {
+        if (!this.isConnected) return [];
+
+        try {
+            let stmt;
+            if (status) {
+                stmt = this.db.prepare('SELECT * FROM subscriptions WHERE status = ? ORDER BY createdAt DESC');
+                return stmt.all(status);
+            } else {
+                stmt = this.db.prepare('SELECT * FROM subscriptions ORDER BY createdAt DESC');
+                return stmt.all();
+            }
+        } catch (error) {
+            console.error('Error getting subscriptions:', error.message);
+            return [];
+        }
+    }
+
     async close() {
-        if (this.client) {
-            await this.client.close();
+        if (this.db) {
+            this.db.close();
             this.isConnected = false;
-            console.log('MongoDB connection closed');
+            console.log('SQLite database connection closed');
         }
     }
 }
 
-module.exports = Database;
+module.exports = DatabaseManager;
