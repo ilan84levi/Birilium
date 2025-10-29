@@ -56,3 +56,7 @@ desktop.ini
 # Test files
 test-results/
 coverage/
+
+# Production environment backups
+*.env.backup-*
+*.env.production-*

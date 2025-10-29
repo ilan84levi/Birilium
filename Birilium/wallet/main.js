@@ -92,12 +92,12 @@ function startBlockchainNode() {
         ...envVars, // Load from .env file
         HTTP_PORT: envVars.HTTP_PORT || process.env.HTTP_PORT || '3001',
         P2P_PORT: envVars.P2P_PORT || process.env.P2P_PORT || '6001',
-        MONGODB_URI: envVars.MONGODB_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/birilium',
         API_KEY: envVars.API_KEY || process.env.API_KEY || '',
         NODE_ENV: process.env.NODE_ENV || 'production',
         // Writable paths for packaged app
         LOG_FILE: path.join(logsPath, 'node.log'),
         LEVELDB_PATH: path.join(dataPath, 'chainstate'),
+        SQLITE_DB_PATH: path.join(dataPath, 'birilium.db'),
         // PayPal configuration
         PAYPAL_MODE: envVars.PAYPAL_MODE || process.env.PAYPAL_MODE || 'live',
         PAYPAL_CLIENT_ID: envVars.PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENT_ID || '',
