@@ -1,8 +1,14 @@
 // P2P Security Module - Message validation, rate limiting, ban scores
 const { z } = require('zod');
 const crypto = require('crypto');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 // ========== MESSAGE SCHEMAS (Zod Validation) ==========
 
@@ -114,15 +120,16 @@ function validateMessage(data) {
 // ========== HANDSHAKE VERIFICATION ==========
 
 function createHandshake(nodePrivateKey, version = '2.1.0') {
-    const key = ec.keyFromPrivate(nodePrivateKey, 'hex');
-    const nodeId = key.getPublic('hex');
+    const privateKeyBytes = hexToBytes(nodePrivateKey);
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false); // uncompressed
+    const nodeId = bytesToHex(publicKeyBytes);
     const timestamp = Date.now();
 
     // Sign handshake
     const message = nodeId + timestamp + version;
-    const hash = crypto.createHash('sha256').update(message).digest('hex');
-    const sig = key.sign(hash, 'base64');
-    const signature = sig.toDER('hex');
+    const msgHash = sha256(utf8ToBytes(message));
+    const sigBytes = secp256k1.sign(msgHash, privateKeyBytes);
+    const signature = bytesToHex(sigBytes);
 
     return {
         nodeId,
@@ -141,11 +148,12 @@ function verifyHandshake(handshake, maxClockDrift = 300000) {
 
     // Verify signature
     const message = handshake.nodeId + handshake.timestamp + handshake.version;
-    const hash = crypto.createHash('sha256').update(message).digest('hex');
+    const msgHash = sha256(utf8ToBytes(message));
 
     try {
-        const key = ec.keyFromPublic(handshake.nodeId, 'hex');
-        const valid = key.verify(hash, handshake.signature);
+        const sigBytes = hexToBytes(handshake.signature);
+        const publicKeyBytes = hexToBytes(handshake.nodeId);
+        const valid = secp256k1.verify(sigBytes, msgHash, publicKeyBytes);
         if (!valid) {
             throw new Error('Invalid handshake signature');
         }

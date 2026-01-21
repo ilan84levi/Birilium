@@ -14,8 +14,14 @@ const {
 } = require('./wallet-security');
 
 const crypto = require('crypto');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 console.log('\n=================================');
 console.log('  WALLET SECURITY TEST SUITE');
@@ -235,9 +241,9 @@ async function runTests() {
 
         const signature = signDeterministic(txHash, wallet.privateKey);
 
-        // Verify signature
-        const keyPair = ec.keyFromPublic(wallet.publicKey, 'hex');
-        const valid = keyPair.verify(txHash, signature);
+        // Verify signature using noble/secp256k1
+        const msgHash = sha256(Buffer.from(txHash, 'utf8'));
+        const valid = secp256k1.verify(hexToBytes(signature), msgHash, hexToBytes(wallet.publicKey));
 
         if (!valid) throw new Error('Signature verification failed');
     });

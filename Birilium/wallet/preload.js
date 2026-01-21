@@ -10,8 +10,14 @@
 
 const { contextBridge, ipcRenderer, clipboard, shell } = require('electron');
 const crypto = require('crypto');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 // Security: Expose only safe, sandboxed APIs to the renderer
 contextBridge.exposeInMainWorld('walletAPI', {
@@ -31,9 +37,10 @@ contextBridge.exposeInMainWorld('walletAPI', {
    */
   generateWallet: () => {
     try {
-      const keyPair = ec.genKeyPair();
-      const privateKey = keyPair.getPrivate('hex');
-      const publicKey = keyPair.getPublic('hex');
+      const privateKeyBytes = secp256k1.utils.randomSecretKey();
+      const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+      const privateKey = bytesToHex(privateKeyBytes);
+      const publicKey = bytesToHex(publicKeyBytes);
 
       return {
         success: true,
@@ -60,17 +67,14 @@ contextBridge.exposeInMainWorld('walletAPI', {
         throw new Error('Missing transaction data or private key');
       }
 
-      // Create signing key from private key
-      const signingKey = ec.keyFromPrivate(privateKeyHex, 'hex');
-
       // Create transaction hash
-      const txHash = crypto.createHash('sha256')
-        .update(txData.fromAddress + txData.toAddress + txData.amount + txData.timestamp)
-        .digest('hex');
+      const txHashString = txData.fromAddress + txData.toAddress + txData.amount + txData.timestamp;
+      const txHash = crypto.createHash('sha256').update(txHashString).digest('hex');
+      const msgHash = sha256(utf8ToBytes(txHash));
 
       // Sign the hash
-      const signature = signingKey.sign(txHash, 'base64');
-      const signatureHex = signature.toDER('hex');
+      const sigBytes = secp256k1.sign(msgHash, hexToBytes(privateKeyHex));
+      const signatureHex = bytesToHex(sigBytes);
 
       return {
         success: true,
@@ -90,12 +94,15 @@ contextBridge.exposeInMainWorld('walletAPI', {
    */
   verifySignature: (txData, signatureHex, publicKeyHex) => {
     try {
-      const txHash = crypto.createHash('sha256')
-        .update(txData.fromAddress + txData.toAddress + txData.amount + txData.timestamp)
-        .digest('hex');
+      const txHashString = txData.fromAddress + txData.toAddress + txData.amount + txData.timestamp;
+      const txHash = crypto.createHash('sha256').update(txHashString).digest('hex');
+      const msgHash = sha256(utf8ToBytes(txHash));
 
-      const keyPair = ec.keyFromPublic(publicKeyHex, 'hex');
-      const isValid = keyPair.verify(txHash, signatureHex);
+      const isValid = secp256k1.verify(
+        hexToBytes(signatureHex),
+        msgHash,
+        hexToBytes(publicKeyHex)
+      );
 
       return {
         success: true,

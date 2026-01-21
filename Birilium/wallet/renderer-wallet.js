@@ -4,9 +4,15 @@
 // Load crypto-js for encryption
 const CryptoJS = require('crypto-js');
 const QRCode = require('qrcode');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
 const SHA256 = require('crypto-js/sha256');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 class BiriliumBlockchainWallet {
     constructor() {
@@ -728,9 +734,9 @@ class BiriliumBlockchainWallet {
             transaction.timestamp
         ).toString();
 
-        const key = ec.keyFromPrivate(this.privateKey, 'hex');
-        const sig = key.sign(txHash, 'base64');
-        return sig.toDER('hex');
+        const msgHash = sha256(utf8ToBytes(txHash));
+        const sigBytes = secp256k1.sign(msgHash, hexToBytes(this.privateKey));
+        return bytesToHex(sigBytes);
     }
 
     // Send coins via blockchain

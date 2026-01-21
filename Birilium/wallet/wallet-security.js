@@ -7,8 +7,14 @@ const bip39 = require('bip39');
 const { BIP32Factory } = require('bip32');
 const ecc = require('tiny-secp256k1');
 const bip32 = BIP32Factory(ecc);
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 // ========== CONSTANTS ==========
 
@@ -140,8 +146,8 @@ function deriveHDWallet(seed) {
     const privateKeyBuffer = child.privateKey;
     const privateKeyHex = privateKeyBuffer.toString('hex');
 
-    const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
-    const publicKey = keyPair.getPublic('hex');
+    const publicKeyBytes = secp256k1.getPublicKey(hexToBytes(privateKeyHex), false);
+    const publicKey = bytesToHex(publicKeyBytes);
 
     return {
         privateKey: privateKeyHex,
@@ -157,21 +163,13 @@ function deriveHDWallet(seed) {
  * Sign transaction with RFC-6979 deterministic signature (low-S enforcement)
  * @param {string} txHash - Transaction hash (hex)
  * @param {string} privateKeyHex - Private key (hex)
- * @returns {string} - DER-encoded signature (hex)
+ * @returns {string} - Compact signature (hex) - noble/secp256k1 uses RFC-6979 and low-S by default
  */
 function signDeterministic(txHash, privateKeyHex) {
-    const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
-
-    // Sign with RFC-6979 (elliptic library uses deterministic nonce by default)
-    const signature = keyPair.sign(txHash, 'hex', { canonical: true });
-
-    // Enforce low-S (BIP-62)
-    const halfN = ec.n.shrn(1);
-    if (signature.s.cmp(halfN) > 0) {
-        signature.s = ec.n.sub(signature.s);
-    }
-
-    return signature.toDER('hex');
+    // noble/secp256k1 uses RFC-6979 deterministic nonce and low-S by default
+    const msgHash = sha256(utf8ToBytes(txHash));
+    const sigBytes = secp256k1.sign(msgHash, hexToBytes(privateKeyHex));
+    return bytesToHex(sigBytes);
 }
 
 // ========== WALLET ENCRYPTION ==========

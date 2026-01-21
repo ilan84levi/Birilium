@@ -1,7 +1,23 @@
 const Blockchain = require('./Blockchain');
 const Transaction = require('./Transaction');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
+
+// Helper: Generate wallet
+function generateWallet() {
+    const privateKeyBytes = secp256k1.utils.randomSecretKey();
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+    return {
+        privateKey: bytesToHex(privateKeyBytes),
+        publicKey: bytesToHex(publicKeyBytes)
+    };
+}
 
 let testsPassed = 0;
 let testsFailed = 0;
@@ -34,10 +50,10 @@ console.log();
 
 // Test 2: Wallet Creation
 console.log('TEST 2: Wallet Creation');
-const key1 = ec.genKeyPair();
-const wallet1 = key1.getPublic('hex');
-const key2 = ec.genKeyPair();
-const wallet2 = key2.getPublic('hex');
+const walletObj1 = generateWallet();
+const wallet1 = walletObj1.publicKey;
+const walletObj2 = generateWallet();
+const wallet2 = walletObj2.publicKey;
 assert(wallet1.length > 0, 'Wallet 1 created');
 assert(wallet2.length > 0, 'Wallet 2 created');
 assert(wallet1 !== wallet2, 'Wallets are unique');
@@ -62,7 +78,7 @@ console.log();
 console.log('TEST 5: Transactions');
 const tx1 = new Transaction(wallet1, wallet2, 5);
 assert(tx1.amount === 5, 'Transaction amount set correctly');
-tx1.signTransaction(key1);
+tx1.signTransaction(walletObj1);
 assert(tx1.signature !== null, 'Transaction signed');
 assert(tx1.isValid(), 'Transaction signature is valid');
 birilium.addTransaction(tx1);
@@ -83,7 +99,7 @@ console.log('TEST 7: Insufficient Balance Protection');
 let errorThrown = false;
 try {
     const tx2 = new Transaction(wallet1, wallet2, 1000);
-    tx2.signTransaction(key1);
+    tx2.signTransaction(walletObj1);
     birilium.addTransaction(tx2);
 } catch (error) {
     errorThrown = error.message.includes('Not enough balance');

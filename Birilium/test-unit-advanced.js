@@ -4,9 +4,25 @@
 const Blockchain = require('./Blockchain');
 const Transaction = require('./Transaction');
 const Block = require('./Block');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
 const crypto = require('crypto');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
+
+// Helper: Generate wallet
+function generateWallet() {
+    const privateKeyBytes = secp256k1.utils.randomSecretKey();
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+    return {
+        privateKey: bytesToHex(privateKeyBytes),
+        publicKey: bytesToHex(publicKeyBytes)
+    };
+}
 
 // P2P Security
 const {
@@ -51,8 +67,8 @@ console.log('TEST 1: Account Nonces & Replay Protection\n');
 
 test('Accept nonce 0 for new account', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account first (mining reward)
     blockchain.minePendingTransactions(addr1);
@@ -66,8 +82,8 @@ test('Accept nonce 0 for new account', () => {
 
 test('Reject duplicate nonce', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account
     blockchain.minePendingTransactions(addr1);
@@ -91,8 +107,8 @@ test('Reject duplicate nonce', () => {
 
 test('Enforce sequential nonces', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account
     blockchain.minePendingTransactions(addr1);
@@ -116,8 +132,8 @@ test('Enforce sequential nonces', () => {
 
 test('Get account nonce correctly', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     if (blockchain.getAccountNonce(addr1) !== 0) {
         throw new Error('New account should have nonce 0');
@@ -210,8 +226,8 @@ console.log('\nTEST 3: Mempool DoS Protection\n');
 
 test('Mempool size limit enforced', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account generously
     blockchain.minePendingTransactions(addr1);
@@ -251,8 +267,8 @@ test('Mempool size limit enforced', () => {
 
 test('Fee-based eviction works', () => {
     const blockchain = new Blockchain();
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account
     blockchain.minePendingTransactions(addr1);
@@ -289,8 +305,8 @@ test('Block transaction count limit', () => {
     blockchain.maxBlockSize = 10;
 
     // Add many transactions
-    const key1 = ec.genKeyPair();
-    const addr1 = key1.getPublic('hex');
+    const key1 = generateWallet();
+    const addr1 = key1.publicKey;
 
     // Fund account
     blockchain.minePendingTransactions(addr1);
@@ -318,7 +334,7 @@ test('Block transaction count limit', () => {
 console.log('\nTEST 5: P2P Security Features\n');
 
 test('Create and verify handshake', () => {
-    const key = ec.genKeyPair();
+    const key = generateWallet();
     const privateKey = key.getPrivate('hex');
 
     const handshake = createHandshake(privateKey);
@@ -328,7 +344,7 @@ test('Create and verify handshake', () => {
 });
 
 test('Reject handshake with wrong signature', () => {
-    const key = ec.genKeyPair();
+    const key = generateWallet();
     const privateKey = key.getPrivate('hex');
 
     const handshake = createHandshake(privateKey);
@@ -364,15 +380,15 @@ test('Reject invalid P2P message', () => {
 
 test('PeerManager enforces max peers', () => {
     const peerManager = new PeerManager(2);
-    const key1 = ec.genKeyPair();
-    const key2 = ec.genKeyPair();
-    const key3 = ec.genKeyPair();
+    const key1 = generateWallet();
+    const key2 = generateWallet();
+    const key3 = generateWallet();
 
-    peerManager.addPeer(key1.getPublic('hex'), {}, createHandshake(key1.getPrivate('hex')));
-    peerManager.addPeer(key2.getPublic('hex'), {}, createHandshake(key2.getPrivate('hex')));
+    peerManager.addPeer(key1.publicKey, {}, createHandshake(key1.getPrivate('hex')));
+    peerManager.addPeer(key2.publicKey, {}, createHandshake(key2.getPrivate('hex')));
 
     try {
-        peerManager.addPeer(key3.getPublic('hex'), {}, createHandshake(key3.getPrivate('hex')));
+        peerManager.addPeer(key3.publicKey, {}, createHandshake(key3.getPrivate('hex')));
         throw new Error('Should reject 3rd peer');
     } catch (err) {
         if (err.message.includes('Should reject')) throw err;

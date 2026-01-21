@@ -3,8 +3,24 @@
 
 const Blockchain = require('./Blockchain');
 const Transaction = require('./Transaction');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
+
+// Helper: Generate wallet
+function generateWallet() {
+    const privateKeyBytes = secp256k1.utils.randomSecretKey();
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+    return {
+        privateKey: bytesToHex(privateKeyBytes),
+        publicKey: bytesToHex(publicKeyBytes)
+    };
+}
 
 console.log('\n=================================');
 console.log('  BIRILIUM LWMA TEST SUITE');
@@ -16,8 +32,8 @@ process.env.ENABLE_LWMA = 'true';
 const biriliumChain = new Blockchain();
 
 // Create test wallet
-const key1 = ec.genKeyPair();
-const wallet1Address = key1.getPublic('hex');
+const key1 = generateWallet();
+const wallet1Address = key1.publicKey;
 
 console.log('TEST 1: LWMA Enabled Check');
 console.log('  ✓ LWMA enabled:', biriliumChain.enableLWMA);
