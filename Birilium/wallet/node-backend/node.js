@@ -29,6 +29,17 @@ const {
     PeerManager
 } = require('./p2p-security');
 
+// Admin Panel Modules
+const auth = require('./auth');
+const audit = require('./audit');
+const adminWebSocket = require('./admin-websocket');
+
+// New Enhancement Modules
+const security = require('./security');
+const cache = require('./cache');
+const config = require('./config');
+const wsService = require('./websocket-service');
+
 const app = express();
 const HTTP_PORT = process.env.HTTP_PORT || 3001;
 const P2P_PORT = process.env.P2P_PORT || 6001;
@@ -112,48 +123,43 @@ const authenticateAPIKey = (req, res, next) => {
     next();
 };
 
-// Admin authentication middleware
+// Admin authentication - JWT-based
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+let ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
-// Validate admin password security
-if (!ADMIN_PASSWORD || ADMIN_PASSWORD === 'admin' || ADMIN_PASSWORD === 'admin123' || ADMIN_PASSWORD.length < 8) {
+// Hash admin password on first run if not already hashed
+if (!ADMIN_PASSWORD_HASH && ADMIN_PASSWORD) {
+    console.log('⚠️  ADMIN_PASSWORD_HASH not set, hashing password...');
+    auth.hashPassword(ADMIN_PASSWORD).then(hash => {
+        ADMIN_PASSWORD_HASH = hash;
+        console.log('✓ Password hashed. Add to .env: ADMIN_PASSWORD_HASH=' + hash);
+        console.log('⚠️  Then remove ADMIN_PASSWORD from .env for security');
+    }).catch(err => {
+        console.error('Error hashing admin password:', err);
+    });
+}
+
+// Validate admin credentials are configured
+if (!ADMIN_USERNAME || (!ADMIN_PASSWORD && !ADMIN_PASSWORD_HASH)) {
     console.error('');
     console.error('═══════════════════════════════════════════════════════════');
-    console.error('🚨 SECURITY ERROR: Weak or missing ADMIN_PASSWORD');
+    console.error('🚨 SECURITY ERROR: Missing admin credentials');
     console.error('═══════════════════════════════════════════════════════════');
     console.error('');
-    console.error('For security reasons, you MUST set a strong ADMIN_PASSWORD');
-    console.error('in your .env file with at least 8 characters.');
+    console.error('You MUST set ADMIN_USERNAME and ADMIN_PASSWORD_HASH in .env');
     console.error('');
     console.error('Example in .env:');
-    console.error('  ADMIN_PASSWORD=MyStr0ngP@ssw0rd!2025');
+    console.error('  ADMIN_USERNAME=admin_519cd57c');
+    console.error('  ADMIN_PASSWORD_HASH=$2b$10$...');
     console.error('');
-    console.error('The server will not start without a secure admin password.');
     console.error('═══════════════════════════════════════════════════════════');
     console.error('');
-    process.exit(1);
 }
-const authenticateAdmin = (req, res, next) => {
-    const username = req.headers['x-admin-username'] || req.body.adminUsername || req.query.adminUsername;
-    const password = req.headers['x-admin-password'] || req.body.adminPassword || req.query.adminPassword;
 
-    if (!username || !password) {
-        return res.status(401).json({
-            error: 'Unauthorized',
-            message: 'Missing admin credentials'
-        });
-    }
-
-    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-        return res.status(401).json({
-            error: 'Unauthorized',
-            message: 'Invalid admin credentials'
-        });
-    }
-
-    next();
-};
+// JWT-based admin authentication middleware
+const authenticateAdmin = auth.authenticateJWT;
+const requireAdmin = auth.requireAdmin;
 
 // Initialize database and blockchain
 const database = new Database();
@@ -174,7 +180,10 @@ async function initializeBlockchain() {
 }
 
 // Call initialization
-initializeBlockchain().catch(console.error);
+initializeBlockchain().then(() => {
+    // Initialize audit logging after database connection
+    audit.initialize(database);
+}).catch(console.error);
 
 // P2P Security: Generate node identity
 const nodePrivateKey = process.env.NODE_PRIVATE_KEY || ec.genKeyPair().getPrivate('hex');
@@ -225,10 +234,11 @@ app.get('/api/stats', (req, res) => {
     res.json(biriliumChain.getStats());
 });
 
-// Get balance
+// Get balance and nonce for address
 app.get('/api/balance/:address', (req, res) => {
     const balance = biriliumChain.getBalanceOfAddress(req.params.address);
-    res.json({ address: req.params.address, balance });
+    const nonce = biriliumChain.getAccountNonce(req.params.address);
+    res.json({ address: req.params.address, balance, nonce });
 });
 
 // Get transactions for address
@@ -262,7 +272,7 @@ app.post('/api/wallet/create', (req, res) => {
 // Submit a SIGNED transaction (SECURE - no private key transmission, PUBLIC)
 app.post('/api/transaction/signed', (req, res) => {
     try {
-        const { fromAddress, toAddress, amount, fee, timestamp, signature } = req.body;
+        const { fromAddress, toAddress, amount, fee, nonce, timestamp, signature } = req.body;
 
         // Validate inputs
         if (!fromAddress || !toAddress || !amount || !signature) {
@@ -281,8 +291,8 @@ app.post('/api/transaction/signed', (req, res) => {
             });
         }
 
-        // Create transaction object
-        const tx = new Transaction(fromAddress, toAddress, parsedAmount, fee || 0);
+        // Create transaction object with nonce for replay protection
+        const tx = new Transaction(fromAddress, toAddress, parsedAmount, fee || 0, nonce || 0);
         tx.timestamp = timestamp || Date.now();
         tx.signature = signature;
 
@@ -297,8 +307,11 @@ app.post('/api/transaction/signed', (req, res) => {
         // Add to blockchain
         biriliumChain.addTransaction(tx);
 
-        // Broadcast to network
+        // Broadcast to P2P network
         broadcast(responseNewTransactionMsg(tx));
+
+        // Notify WebSocket clients about new transaction
+        wsService.notifyNewTransaction(tx);
 
         res.json({
             success: true,
@@ -314,65 +327,8 @@ app.post('/api/transaction/signed', (req, res) => {
     }
 });
 
-// OLD ENDPOINT (DEPRECATED - kept for backward compatibility, will be removed, PUBLIC)
-app.post('/api/transaction', (req, res) => {
-    console.warn('DEPRECATED: /api/transaction endpoint used. Use /api/transaction/signed instead.');
-    try {
-        const { fromAddress, toAddress, amount, privateKey } = req.body;
-
-        // Validate inputs
-        if (!fromAddress || !toAddress || !amount || !privateKey) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields: fromAddress, toAddress, amount, and privateKey are required'
-            });
-        }
-
-        // Validate amount
-        const parsedAmount = parseFloat(amount);
-        if (isNaN(parsedAmount) || parsedAmount <= 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid amount: must be a positive number'
-            });
-        }
-
-        // Calculate fee
-        const fee = biriliumChain.calculateTransactionFee(parsedAmount);
-
-        // Create transaction with fee
-        const tx = new Transaction(fromAddress, toAddress, parsedAmount, fee);
-
-        // Sign transaction
-        try {
-            const key = ec.keyFromPrivate(privateKey, 'hex');
-            tx.signTransaction(key);
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid private key format'
-            });
-        }
-
-        // Add to blockchain
-        biriliumChain.addTransaction(tx);
-
-        // Broadcast to network
-        broadcast(responseNewTransactionMsg(tx));
-
-        res.json({
-            success: true,
-            message: 'Transaction added to pending pool',
-            transaction: tx,
-            fee: fee
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
+// SECURITY: Deprecated endpoint removed - private keys should NEVER be transmitted
+// Use /api/transaction/signed instead (client-side signing)
 
 // Mine a block (PUBLIC - no API key required for decentralization)
 app.post('/api/mine', miningLimiter, async (req, res) => {
@@ -404,8 +360,14 @@ app.post('/api/mine', miningLimiter, async (req, res) => {
             });
         }
 
-        // Broadcast new block
+        // Broadcast new block to P2P network
         broadcast(responseNewBlockMsg(block));
+
+        // Notify WebSocket clients about new block
+        wsService.notifyNewBlock(block);
+
+        // Invalidate relevant caches
+        cache.invalidateOnChange('block_mined', block);
 
         res.json({
             success: true,
@@ -488,134 +450,9 @@ app.get('/metrics', (req, res) => {
 
 // ========== ADMIN INTERFACE ==========
 
-// Admin dashboard - accessible via CTRL+ALT+A in wallet
-app.get('/api/admin', (req, res) => {
-    // Simple HTML admin dashboard
-    const adminDashboard = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Birilium Admin Panel</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-            .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-            h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-            .section { margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 4px solid #007bff; }
-            .stat { display: inline-block; margin-right: 30px; }
-            .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
-            .stat-label { color: #666; }
-            button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background: #0056b3; }
-            input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background: #f5f5f5; font-weight: bold; }
-            .error { color: #d32f2f; }
-            .success { color: #388e3c; }
-        </style>
-        <script>
-            async function loadStats() {
-                try {
-                    const health = await fetch('http://localhost:3001/health').then(r => r.json());
-                    const stats = await fetch('http://localhost:3001/api/stats').then(r => r.json());
-
-                    document.getElementById('blocks').textContent = health.blockchain.blocks;
-                    document.getElementById('difficulty').textContent = health.blockchain.difficulty;
-                    document.getElementById('pending').textContent = health.blockchain.pendingTransactions;
-                    document.getElementById('peers').textContent = health.peers;
-                    document.getElementById('memoryUsed').textContent = health.memory.used;
-                    document.getElementById('uptime').textContent = health.uptimeFormatted;
-
-                    document.getElementById('supply').textContent = (stats.currentSupply / 1e8).toFixed(2) + ' BRL';
-                    document.getElementById('miningReward').textContent = stats.miningReward + ' BRL';
-                } catch (e) {
-                    document.getElementById('error').textContent = 'Error loading stats: ' + e.message;
-                }
-            }
-
-            async function getPeers() {
-                try {
-                    const peers = await fetch('http://localhost:3001/api/peers').then(r => r.json());
-                    let html = '<table><tr><th>Node ID</th><th>Version</th><th>Connected</th></tr>';
-                    peers.forEach(p => {
-                        html += '<tr><td>' + p.nodeId + '</td><td>' + p.version + '</td><td>' + p.connectedAt + '</td></tr>';
-                    });
-                    html += '</table>';
-                    document.getElementById('peersList').innerHTML = html;
-                } catch (e) {
-                    document.getElementById('peersList').innerHTML = '<span class="error">Error: ' + e.message + '</span>';
-                }
-            }
-
-            function goBack() {
-                window.close();
-            }
-
-            window.onload = function() {
-                loadStats();
-                getPeers();
-                setInterval(loadStats, 5000);
-            };
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Birilium Admin Panel</h1>
-            <span id="error" class="error"></span>
-
-            <div class="section">
-                <h2>Blockchain Status</h2>
-                <div class="stat">
-                    <div class="stat-value" id="blocks">--</div>
-                    <div class="stat-label">Total Blocks</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="difficulty">--</div>
-                    <div class="stat-label">Difficulty</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="pending">--</div>
-                    <div class="stat-label">Pending TX</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="peers">--</div>
-                    <div class="stat-label">Connected Peers</div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Network Stats</h2>
-                <div class="stat">
-                    <div class="stat-value" id="supply">--</div>
-                    <div class="stat-label">Current Supply</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="miningReward">--</div>
-                    <div class="stat-label">Mining Reward</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="memoryUsed">--</div>
-                    <div class="stat-label">Memory Used</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="uptime">--</div>
-                    <div class="stat-label">Uptime</div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Connected Peers</h2>
-                <div id="peersList">Loading...</div>
-            </div>
-
-            <div class="section">
-                <button onclick="goBack()">Close Admin Panel</button>
-            </div>
-        </div>
-    </body>
-    </html>
-    `;
-    res.send(adminDashboard);
+// Admin dashboard - serve admin-dashboard.html
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
 // ========== CONTACT FORM ENDPOINT ==========
@@ -736,28 +573,312 @@ app.get('/api/paypal-config', (req, res) => {
 
 // ========== ADMIN & SUBSCRIPTION ENDPOINTS ==========
 
-// Admin login endpoint
-app.post('/api/admin/login', (req, res) => {
+// Admin login endpoint (JWT-based)
+app.post('/api/admin/auth/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
+        await audit.logAudit('anonymous', 'ADMIN_LOGIN_FAILED', null, { reason: 'missing_credentials' }, false, req);
         return res.status(400).json({
             success: false,
             error: 'Username and password required'
         });
     }
 
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        res.json({
-            success: true,
-            message: 'Admin authentication successful'
-        });
-    } else {
-        res.status(401).json({
+    if (username !== ADMIN_USERNAME) {
+        await audit.logAudit(username, 'ADMIN_LOGIN_FAILED', null, { reason: 'invalid_username' }, false, req);
+        return res.status(401).json({
             success: false,
-            error: 'Invalid admin credentials'
+            error: 'Invalid credentials'
         });
     }
+
+    const isValid = await auth.verifyPassword(password, ADMIN_PASSWORD_HASH);
+
+    if (!isValid) {
+        await audit.logAudit(username, 'ADMIN_LOGIN_FAILED', null, { reason: 'invalid_password' }, false, req);
+        return res.status(401).json({
+            success: false,
+            error: 'Invalid credentials'
+        });
+    }
+
+    // Generate tokens
+    const user = { username, role: 'admin' };
+    const accessToken = auth.generateAccessToken(user);
+    const refreshToken = auth.generateRefreshToken(user);
+
+    await audit.logAudit(username, 'ADMIN_LOGIN_SUCCESS', null, {}, true, req);
+
+    res.json({
+        success: true,
+        accessToken,
+        refreshToken,
+        expiresIn: process.env.JWT_EXPIRES_IN || '1y',
+        user: { username, role: 'admin' }
+    });
+});
+
+// Dashboard summary endpoint
+app.get('/api/admin/dashboard', authenticateAdmin, async (req, res) => {
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+
+    res.json({
+        success: true,
+        data: {
+            chain: {
+                height: biriliumChain.chain.length - 1,
+                difficulty: biriliumChain.difficulty,
+                currentSupply: biriliumChain.currentSupply.toFixed(8),
+                miningReward: "10",
+                avgBlockTime: 30000
+            },
+            mempool: {
+                pendingTx: biriliumChain.pendingTransactions.length,
+                sizeBytes: JSON.stringify(biriliumChain.pendingTransactions).length
+            },
+            peers: {
+                connected: peerManager.getAllPeers().length,
+                max: MAX_PEERS,
+                list: peerManager.getStats()
+            },
+            node: {
+                version: "2.1.0",
+                uptime: Math.floor(uptime),
+                uptimeFormatted: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+                memoryMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+                cpuPercent: 0
+            },
+            database: {
+                connected: database.isConnected,
+                path: database.dbPath
+            }
+        }
+    });
+});
+
+// Recent transactions endpoint
+app.get('/api/admin/transactions/recent', authenticateAdmin, async (req, res) => {
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
+    // Get all transactions from all blocks
+    const allTransactions = [];
+    for (let i = biriliumChain.chain.length - 1; i >= 1; i--) {
+        const block = biriliumChain.chain[i];
+        block.transactions.forEach(tx => {
+            allTransactions.push({
+                ...tx,
+                blockHeight: i,
+                blockHash: block.hash,
+                blockTimestamp: block.timestamp
+            });
+        });
+    }
+
+    // Sort by timestamp (newest first)
+    allTransactions.sort((a, b) => b.blockTimestamp - a.blockTimestamp);
+
+    // Paginate
+    const paginatedTx = allTransactions.slice(offset, offset + limit);
+
+    res.json({
+        success: true,
+        data: paginatedTx,
+        pagination: {
+            total: allTransactions.length,
+            limit,
+            offset,
+            hasMore: offset + limit < allTransactions.length
+        }
+    });
+});
+
+// Transaction detail endpoint
+app.get('/api/admin/transactions/:txid', authenticateAdmin, async (req, res) => {
+    const txid = req.params.txid;
+
+    // Search for transaction in blockchain
+    for (let i = biriliumChain.chain.length - 1; i >= 1; i--) {
+        const block = biriliumChain.chain[i];
+        const tx = block.transactions.find(t =>
+            (t.txId && t.txId === txid) ||
+            (t.toAddress && t.toAddress.includes(txid.substring(0, 20)))
+        );
+
+        if (tx) {
+            return res.json({
+                success: true,
+                data: {
+                    ...tx,
+                    blockHeight: i,
+                    blockHash: block.hash,
+                    blockTimestamp: block.timestamp,
+                    confirmations: biriliumChain.chain.length - i
+                }
+            });
+        }
+    }
+
+    res.status(404).json({
+        success: false,
+        error: 'Transaction not found'
+    });
+});
+
+// Audit log endpoint
+app.get('/api/admin/audit', authenticateAdmin, async (req, res) => {
+    const filters = {
+        actor: req.query.actor,
+        action: req.query.action,
+        from: req.query.from ? parseInt(req.query.from) : undefined,
+        to: req.query.to ? parseInt(req.query.to) : undefined,
+        limit: parseInt(req.query.limit) || 100,
+        offset: parseInt(req.query.offset) || 0
+    };
+
+    const entries = await audit.queryAuditLog(filters);
+    const stats = await audit.getAuditStats();
+
+    res.json({
+        success: true,
+        data: entries,
+        stats: stats,
+        pagination: {
+            limit: filters.limit,
+            offset: filters.offset
+        }
+    });
+});
+
+// Rotate API key endpoint
+app.post('/api/admin/rotate-api-key', authenticateAdmin, audit.auditMiddleware('ROTATE_API_KEY'), async (req, res) => {
+    const newApiKey = auth.generateApiKey();
+
+    res.json({
+        success: true,
+        apiKey: newApiKey,
+        message: 'New API key generated. Update your .env file with API_KEY=' + newApiKey
+    });
+});
+
+// Mempool purge endpoint
+app.post('/api/admin/mempool/purge', authenticateAdmin, requireAdmin, audit.auditMiddleware('MEMPOOL_PURGE'), async (req, res) => {
+    const count = biriliumChain.pendingTransactions.length;
+    biriliumChain.pendingTransactions = [];
+
+    adminWebSocket.onMempoolUpdate(0, [], []);
+
+    res.json({
+        success: true,
+        message: `Purged ${count} transactions from mempool`
+    });
+});
+
+// WebSocket status endpoint
+app.get('/api/admin/websocket/status', authenticateAdmin, async (req, res) => {
+    res.json({
+        success: true,
+        clients: adminWebSocket.getClientCount(),
+        connected: adminWebSocket.getClients()
+    });
+});
+
+// ========== NEW ENHANCEMENT ENDPOINTS ==========
+
+// Logout endpoint - blacklists the current token
+app.post('/api/admin/auth/logout', authenticateAdmin, async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const token = authHeader && authHeader.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : null;
+
+        if (token) {
+            // Blacklist the token (12 hours expiry to match token lifetime)
+            const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
+            security.blacklistToken(token, expiresAt);
+
+            await audit.logAudit(req.user.username, 'LOGOUT', null, {}, true, req);
+        }
+
+        res.json({
+            success: true,
+            message: 'Logged out successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get CSRF token for forms
+app.get('/api/admin/csrf-token', authenticateAdmin, (req, res) => {
+    const sessionId = req.user?.username || req.ip;
+    const csrfToken = security.generateCSRFToken(sessionId);
+
+    res.json({
+        success: true,
+        csrfToken
+    });
+});
+
+// Cache statistics endpoint
+app.get('/api/admin/cache/stats', authenticateAdmin, (req, res) => {
+    res.json({
+        success: true,
+        stats: cache.getAllCacheStats()
+    });
+});
+
+// Clear cache endpoint
+app.post('/api/admin/cache/clear', authenticateAdmin, requireAdmin, audit.auditMiddleware('CACHE_CLEAR'), (req, res) => {
+    cache.invalidateOnChange('chain_sync', {});
+
+    res.json({
+        success: true,
+        message: 'Cache cleared successfully'
+    });
+});
+
+// Password validation endpoint (for frontend password strength check)
+app.post('/api/validate-password', (req, res) => {
+    const { password } = req.body;
+    const result = security.validatePassword(password);
+
+    res.json({
+        success: true,
+        valid: result.valid,
+        errors: result.errors,
+        requirements: security.PASSWORD_REQUIREMENTS
+    });
+});
+
+// Client WebSocket service stats
+app.get('/api/websocket/stats', (req, res) => {
+    res.json({
+        success: true,
+        stats: wsService.getStats()
+    });
+});
+
+// Configuration info (non-sensitive)
+app.get('/api/config', (req, res) => {
+    res.json({
+        success: true,
+        config: {
+            version: config.version,
+            features: config.features,
+            nodeVersion: config.nodeVersion,
+            maxSupply: 25000000000,
+            miningReward: 10,
+            targetBlockTime: config.targetBlockTime,
+            maxMempoolSize: config.maxMempoolSize
+        }
+    });
 });
 
 // Activate subscription (called from frontend when PayPal subscription is approved)
@@ -781,35 +902,39 @@ app.post('/api/subscription/activate', async (req, res) => {
             });
         }
 
-        // Store subscription in database
+        // Store subscription in database (SQLite)
+        const now = Date.now();
+        const startTime = timestamp ? new Date(timestamp).getTime() : now;
+
+        const insertSubStmt = database.db.prepare(`
+            INSERT OR REPLACE INTO subscriptions
+            (subscriptionId, walletAddress, planId, amount, currency, status, startTime, createdAt)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+        `);
+        insertSubStmt.run(subscriptionId, walletAddress, planId, parseFloat(amount), currency || 'USD', startTime, now);
+
+        // Store analytics event (SQLite)
+        const metadata = JSON.stringify({
+            subscriptionId,
+            planId,
+            amount: parseFloat(amount),
+            currency: currency || 'USD'
+        });
+        const insertAnalyticsStmt = database.db.prepare(`
+            INSERT INTO analytics (event, walletAddress, timestamp, metadata, createdAt)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+        insertAnalyticsStmt.run('subscription_activated', walletAddress, startTime, metadata, now);
+
         const subscription = {
             walletAddress,
             subscriptionId,
             planId,
             amount: parseFloat(amount),
             currency: currency || 'USD',
-            startDate: new Date(timestamp || Date.now()),
-            status: 'active',
-            cancelledAt: null,
-            createdAt: new Date()
+            startDate: new Date(startTime),
+            status: 'active'
         };
-
-        await database.db.collection('subscriptions').insertOne(subscription);
-
-        // Store analytics event
-        const analyticsEvent = {
-            event: 'subscription_activated',
-            walletAddress,
-            timestamp: new Date(timestamp || Date.now()),
-            metadata: {
-                subscriptionId,
-                planId,
-                amount: parseFloat(amount),
-                currency: currency || 'USD'
-            }
-        };
-
-        await database.db.collection('analytics').insertOne(analyticsEvent);
 
         logger.info({ walletAddress, subscriptionId }, 'Subscription activated');
 
@@ -841,14 +966,14 @@ app.post('/api/subscription/cancel', async (req, res) => {
         }
 
         // PayPal API credentials from environment variables
-        const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || 'AQWyciyninNqul8a60qGjkbez7hCmJ9GHXd7FMKZuXYn6AK_O2KbnFnqogFcWZaRWE4wwFREnlm7EaYe';
+        const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
         const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
         const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox'; // 'sandbox' or 'live'
 
-        if (!PAYPAL_CLIENT_SECRET) {
+        if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
             return res.status(500).json({
                 success: false,
-                error: 'PayPal API not configured. Set PAYPAL_CLIENT_SECRET environment variable.'
+                error: 'PayPal API not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.'
             });
         }
 
@@ -888,27 +1013,24 @@ app.post('/api/subscription/cancel', async (req, res) => {
             }
         );
 
-        // Step 3: Update database if connected
+        // Step 3: Update database if connected (SQLite)
         if (database && database.isConnected) {
-            await database.db.collection('subscriptions').updateOne(
-                { subscriptionId },
-                {
-                    $set: {
-                        status: 'cancelled',
-                        cancelledAt: new Date()
-                    }
-                }
-            );
+            const now = Date.now();
+
+            // Update subscription status
+            const updateStmt = database.db.prepare(`
+                UPDATE subscriptions SET status = 'cancelled', cancelledAt = ?
+                WHERE subscriptionId = ?
+            `);
+            updateStmt.run(now, subscriptionId);
 
             // Store analytics event
-            const analyticsEvent = {
-                event: 'subscription_cancelled',
-                walletAddress: walletAddress || 'unknown',
-                timestamp: new Date(),
-                metadata: { subscriptionId }
-            };
-
-            await database.db.collection('analytics').insertOne(analyticsEvent);
+            const metadata = JSON.stringify({ subscriptionId });
+            const insertStmt = database.db.prepare(`
+                INSERT INTO analytics (event, walletAddress, timestamp, metadata, createdAt)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            insertStmt.run('subscription_cancelled', walletAddress || 'unknown', now, metadata, now);
         }
 
         logger.info({ subscriptionId }, 'Subscription cancelled');
@@ -950,33 +1072,33 @@ app.get('/api/analytics', authenticateAdmin, async (req, res) => {
             });
         }
 
-        // Count total wallet creation events
-        const totalWallets = await database.db.collection('analytics').countDocuments({
-            event: 'wallet_created'
-        });
+        // Count total wallet creation events (SQLite)
+        const walletsResult = database.db.prepare(
+            "SELECT COUNT(*) as count FROM analytics WHERE event = 'wallet_created'"
+        ).get();
+        const totalWallets = walletsResult.count;
 
-        // Count active subscriptions
-        const activeSubscriptions = await database.db.collection('subscriptions').countDocuments({
-            status: 'active'
-        });
+        // Count active subscriptions (SQLite)
+        const subsResult = database.db.prepare(
+            "SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'"
+        ).get();
+        const activeSubscriptions = subsResult.count;
 
-        // Calculate monthly revenue (last 30 days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        // Calculate monthly revenue (last 30 days) (SQLite)
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
 
-        const recentSubscriptions = await database.db.collection('subscriptions').find({
-            startDate: { $gte: thirtyDaysAgo },
-            status: { $in: ['active', 'cancelled'] }
-        }).toArray();
+        const recentSubsResult = database.db.prepare(`
+            SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions
+            WHERE startTime >= ? AND status IN ('active', 'cancelled')
+        `).get(thirtyDaysAgo);
+        const monthlyRevenue = recentSubsResult.total;
 
-        const monthlyRevenue = recentSubscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0);
-
-        // Calculate total revenue (all time)
-        const allSubscriptions = await database.db.collection('subscriptions').find({
-            status: { $in: ['active', 'cancelled'] }
-        }).toArray();
-
-        const totalRevenue = allSubscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0);
+        // Calculate total revenue (all time) (SQLite)
+        const totalRevenueResult = database.db.prepare(`
+            SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions
+            WHERE status IN ('active', 'cancelled')
+        `).get();
+        const totalRevenue = totalRevenueResult.total;
 
         res.json({
             totalWallets,
@@ -1001,12 +1123,14 @@ app.get('/api/subscriptions', authenticateAdmin, async (req, res) => {
             return res.json([]);
         }
 
-        // Fetch all active subscriptions, sorted by most recent first
-        const subscriptions = await database.db.collection('subscriptions')
-            .find({ status: 'active' })
-            .sort({ startDate: -1 })
-            .limit(100)
-            .toArray();
+        // Fetch all active subscriptions, sorted by most recent first (SQLite)
+        const subscriptions = database.db.prepare(`
+            SELECT walletAddress, subscriptionId, planId, amount, currency, startTime, status
+            FROM subscriptions
+            WHERE status = 'active'
+            ORDER BY startTime DESC
+            LIMIT 100
+        `).all();
 
         // Format for frontend display
         const formatted = subscriptions.map(sub => ({
@@ -1015,7 +1139,7 @@ app.get('/api/subscriptions', authenticateAdmin, async (req, res) => {
             planId: sub.planId,
             amount: sub.amount,
             currency: sub.currency,
-            startDate: sub.startDate,
+            startDate: new Date(sub.startTime).toISOString(),
             status: sub.status
         }));
 
@@ -1042,16 +1166,16 @@ app.post('/api/analytics/wallet-created', async (req, res) => {
             });
         }
 
-        // Store analytics event if database is connected
+        // Store analytics event if database is connected (SQLite)
         if (database && database.isConnected) {
-            const analyticsEvent = {
-                event: 'wallet_created',
-                walletAddress,
-                timestamp: new Date(timestamp || Date.now()),
-                metadata: {}
-            };
+            const now = Date.now();
+            const eventTime = timestamp ? new Date(timestamp).getTime() : now;
 
-            await database.db.collection('analytics').insertOne(analyticsEvent);
+            const insertStmt = database.db.prepare(`
+                INSERT INTO analytics (event, walletAddress, timestamp, metadata, createdAt)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            insertStmt.run('wallet_created', walletAddress, eventTime, '{}', now);
         }
 
         logger.info({ walletAddress }, 'Wallet created');
@@ -1445,6 +1569,25 @@ const broadcast = (message) => {
     });
 };
 
+// ========== Configuration Validation ==========
+console.log('Validating configuration...');
+const configValidation = security.validateConfiguration();
+
+if (configValidation.warnings.length > 0) {
+    console.log('\n⚠️  Configuration Warnings:');
+    configValidation.warnings.forEach(w => console.log(`   - ${w}`));
+}
+
+if (!configValidation.valid) {
+    console.error('\n❌ Configuration Errors:');
+    configValidation.errors.forEach(e => console.error(`   - ${e}`));
+    console.error('\nPlease fix configuration errors before starting.\n');
+    // Continue anyway for development, but warn
+    if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+    }
+}
+
 // ========== Start Server ==========
 
 const server = app.listen(HTTP_PORT, () => {
@@ -1460,12 +1603,21 @@ const server = app.listen(HTTP_PORT, () => {
     });
 
     console.log('=================================');
-    console.log('  BIRILIUM BLOCKCHAIN NODE v2.1');
+    console.log('  BIRILIUM BLOCKCHAIN NODE v2.2');
     console.log('=================================');
     console.log(`HTTP API: http://localhost:${HTTP_PORT}`);
     console.log(`P2P Port: ${P2P_PORT}`);
+    console.log(`WebSocket: ws://localhost:${HTTP_PORT}/ws`);
     console.log(`Metrics: http://localhost:${HTTP_PORT}/metrics`);
+    console.log(`Admin Dashboard: http://localhost:${HTTP_PORT}/admin`);
     console.log('=================================');
+
+    // Initialize Admin WebSocket Server
+    adminWebSocket.initialize(server, biriliumChain);
+
+    // Initialize Client WebSocket Service for real-time updates
+    wsService.initialize(server, '/ws');
+    console.log('✓ WebSocket service initialized');
 }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`[ERROR] Port ${HTTP_PORT} already in use!`);

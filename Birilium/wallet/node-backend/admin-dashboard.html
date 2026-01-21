@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birilium Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
+        }
+
+        /* Login Page */
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            width: 400px;
+        }
+
+        .login-box h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            display: none;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 24px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #2ecc71;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn-logout {
+            padding: 8px 20px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .container {
+            padding: 30px 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .kpi-card h3 {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+
+        .kpi-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .kpi-card .subtitle {
+            font-size: 12px;
+            color: #95a5a6;
+            margin-top: 5px;
+        }
+
+        /* Tables */
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .table-container h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .hash {
+            font-family: monospace;
+            font-size: 12px;
+            color: #667eea;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #95a5a6;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <h1>🔐 Birilium Admin</h1>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn">Login</button>
+                <div id="loginError" class="error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="dashboard">
+        <div class="header">
+            <h1>⚡ Birilium Admin Dashboard</h1>
+            <div class="user-info">
+                <div class="status-dot"></div>
+                <span id="username-display">Admin</span>
+                <button class="btn-logout" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <h3>Total Blocks</h3>
+                    <div class="value" id="kpi-blocks">0</div>
+                    <div class="subtitle">Chain height</div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Difficulty</h3>
+                    <div class="value" id="kpi-difficulty">0</div>
+                    <div class="subtitle">Current</div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Pending TX</h3>
+                    <div class="value" id="kpi-pending">0</div>
+                    <div class="subtitle">In mempool</div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Connected Peers</h3>
+                    <div class="value" id="kpi-peers">0</div>
+                    <div class="subtitle">Active connections</div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Current Supply</h3>
+                    <div class="value" id="kpi-supply">0</div>
+                    <div class="subtitle">BRL</div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Node Uptime</h3>
+                    <div class="value" id="kpi-uptime">0h 0m</div>
+                    <div class="subtitle">Running</div>
+                </div>
+            </div>
+
+            <!-- Recent Blocks -->
+            <div class="table-container">
+                <h2>📦 Recent Blocks</h2>
+                <div id="blocks-loading" class="loading">Loading blocks...</div>
+                <table id="blocks-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Height</th>
+                            <th>Hash</th>
+                            <th>Transactions</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocks-tbody"></tbody>
+                </table>
+            </div>
+
+            <!-- Recent Transactions -->
+            <div class="table-container">
+                <h2>💸 Recent Transactions</h2>
+                <div id="tx-loading" class="loading">Loading transactions...</div>
+                <table id="tx-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Amount</th>
+                            <th>Block</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tx-tbody"></tbody>
+                </table>
+            </div>
+
+            <!-- Peers -->
+            <div class="table-container">
+                <h2>🌐 Connected Peers</h2>
+                <div id="peers-loading" class="loading">Loading peers...</div>
+                <table id="peers-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Node ID</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="peers-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Use current window location for API base (works with any port)
+        const API_BASE = `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
+        let accessToken = null;
+        let wsConnection = null;
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('loginError');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    accessToken = data.accessToken;
+                    document.getElementById('username-display').textContent = username;
+                    document.getElementById('loginPage').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+
+                    // Load dashboard data
+                    loadDashboard();
+                    connectWebSocket();
+                } else {
+                    errorDiv.textContent = data.error || 'Login failed';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Connection error: ' + error.message;
+            }
+        });
+
+        // Logout
+        function logout() {
+            accessToken = null;
+            if (wsConnection) {
+                wsConnection.close();
+            }
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('loginPage').style.display = 'flex';
+            document.getElementById('password').value = '';
+        }
+
+        // Load Dashboard Data
+        async function loadDashboard() {
+            try {
+                // Load KPIs
+                const dashboard = await apiRequest('/admin/dashboard');
+                if (dashboard.success) {
+                    updateKPIs(dashboard.data);
+                }
+
+                // Load recent blocks
+                const blocks = await apiRequest('/blocks');
+                updateBlocksTable(blocks.slice(-10).reverse());
+
+                // Load peers
+                const peers = await apiRequest('/peers');
+                updatePeersTable(peers);
+
+            } catch (error) {
+                console.error('Dashboard load error:', error);
+            }
+        }
+
+        // API Request Helper
+        async function apiRequest(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    logout();
+                }
+                throw new Error('API request failed');
+            }
+
+            return response.json();
+        }
+
+        // Update KPIs
+        function updateKPIs(data) {
+            document.getElementById('kpi-blocks').textContent = data.chain.height;
+            document.getElementById('kpi-difficulty').textContent = data.chain.difficulty;
+            document.getElementById('kpi-pending').textContent = data.mempool.pendingTx;
+            document.getElementById('kpi-peers').textContent = data.peers.connected;
+            document.getElementById('kpi-supply').textContent = parseFloat(data.chain.currentSupply).toFixed(2);
+            document.getElementById('kpi-uptime').textContent = data.node.uptimeFormatted;
+        }
+
+        // Update Blocks Table
+        function updateBlocksTable(blocks) {
+            const tbody = document.getElementById('blocks-tbody');
+            tbody.innerHTML = '';
+
+            blocks.forEach((block, index) => {
+                const row = tbody.insertRow();
+                const blockHeight = blocks.length - index - 1; // Calculate height from reversed array
+                row.innerHTML = `
+                    <td>${blockHeight}</td>
+                    <td><span class="hash">${block.hash.substring(0, 20)}...</span></td>
+                    <td>${block.transactions.length}</td>
+                    <td>${new Date(block.timestamp).toLocaleString()}</td>
+                `;
+            });
+
+            document.getElementById('blocks-loading').style.display = 'none';
+            document.getElementById('blocks-table').style.display = 'table';
+        }
+
+        // Update Peers Table
+        function updatePeersTable(peers) {
+            const tbody = document.getElementById('peers-tbody');
+            tbody.innerHTML = '';
+
+            if (peers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No peers connected</td></tr>';
+            } else {
+                peers.forEach(peer => {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td><span class="hash">${peer.peerId?.substring(0, 20) || 'Unknown'}...</span></td>
+                        <td>2.1.0</td>
+                        <td><span class="badge badge-success">Connected</span></td>
+                    `;
+                });
+            }
+
+            document.getElementById('peers-loading').style.display = 'none';
+            document.getElementById('peers-table').style.display = 'table';
+        }
+
+        // WebSocket Connection
+        function connectWebSocket() {
+            // Note: WebSocket integration would go here
+            // wsConnection = new WebSocket(`ws://localhost:3001/admin-ws?token=${accessToken}`);
+
+            console.log('WebSocket connection would be established here');
+
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadDashboard();
+            }, 30000);
+        }
+
+        // Auto-logout on token expiry (12 hours)
+        setTimeout(() => {
+            alert('Session expired. Please login again.');
+            logout();
+        }, 12 * 60 * 60 * 1000);
+    </script>
+</body>
+</html>
