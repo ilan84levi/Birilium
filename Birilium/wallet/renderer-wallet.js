@@ -528,7 +528,7 @@ class BiriliumBlockchainWallet {
             if (response.ok) {
                 const stats = await response.json();
 
-                const MAX_SUPPLY = 21000000; // 21 million BRL total supply
+                const MAX_SUPPLY = 25000000000; // 25 billion BRL total supply (matches backend)
                 const totalMined = stats.currentSupply || 0;
                 const remaining = MAX_SUPPLY - totalMined;
 
@@ -716,12 +716,15 @@ class BiriliumBlockchainWallet {
     }
 
     // Sign transaction client-side (SECURE)
+    // Hash must match backend Transaction.calculateHash() exactly
     signTransaction(transaction) {
+        const nonce = transaction.nonce || 0;
         const txHash = SHA256(
             transaction.fromAddress +
             transaction.toAddress +
             transaction.amount +
             transaction.fee +
+            nonce +
             transaction.timestamp
         ).toString();
 
@@ -761,12 +764,27 @@ class BiriliumBlockchainWallet {
         }
 
         try {
-            // Create transaction object
+            // Get current nonce for this account from the blockchain
+            let accountNonce = 0;
+            try {
+                const nonceResponse = await fetch(`${this.nodeUrl}/api/balance/${this.walletAddress}`);
+                if (nonceResponse.ok) {
+                    const data = await nonceResponse.json();
+                    // The backend tracks nonces - for new transactions, increment from current
+                    accountNonce = (data.nonce || 0) + 1;
+                }
+            } catch (e) {
+                // If we can't get nonce, use 0 for new accounts
+                console.log('Could not fetch nonce, using 0');
+            }
+
+            // Create transaction object with nonce for replay protection
             const transaction = {
                 fromAddress: this.walletAddress,
                 toAddress: recipientAddress,
                 amount: amount,
                 fee: estimatedFee,
+                nonce: accountNonce,
                 timestamp: Date.now()
             };
 

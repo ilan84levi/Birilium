@@ -94,11 +94,27 @@ class DatabaseManager {
                 CREATE TABLE IF NOT EXISTS subscriptions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     subscriptionId TEXT UNIQUE NOT NULL,
-                    subscriberEmail TEXT NOT NULL,
+                    walletAddress TEXT,
+                    subscriberEmail TEXT,
                     planId TEXT NOT NULL,
+                    amount REAL,
+                    currency TEXT DEFAULT 'USD',
                     status TEXT NOT NULL,
                     startTime INTEGER NOT NULL,
                     nextBillingTime INTEGER,
+                    cancelledAt INTEGER,
+                    createdAt INTEGER NOT NULL
+                )
+            `);
+
+            // Analytics table for tracking events
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS analytics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event TEXT NOT NULL,
+                    walletAddress TEXT,
+                    timestamp INTEGER NOT NULL,
+                    metadata TEXT,
                     createdAt INTEGER NOT NULL
                 )
             `);
@@ -125,6 +141,12 @@ class DatabaseManager {
             // Index on subscriptions
             this.db.exec('CREATE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(subscriberEmail)');
             this.db.exec('CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sub_wallet ON subscriptions(walletAddress)');
+
+            // Index on analytics
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics(event)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_wallet ON analytics(walletAddress)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_timestamp ON analytics(timestamp DESC)');
 
             console.log('✓ Database indexes created');
         } catch (error) {
