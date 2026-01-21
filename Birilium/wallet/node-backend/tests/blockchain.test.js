@@ -12,8 +12,8 @@ process.env.NODE_ENV = 'test';
 const Blockchain = require('../Blockchain');
 const Transaction = require('../Transaction');
 const Block = require('../Block');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { bytesToHex, hexToBytes } = require('@noble/hashes/utils.js');
 
 let testsPassed = 0;
 let testsFailed = 0;
@@ -35,17 +35,24 @@ async function test(name, fn) {
 
 // Helper: Generate a test wallet
 function generateWallet() {
-    const key = ec.genKeyPair();
+    const privateKeyBytes = secp256k1.utils.randomSecretKey();
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false); // uncompressed
     return {
-        privateKey: key.getPrivate('hex'),
-        publicKey: key.getPublic('hex')
+        privateKey: bytesToHex(privateKeyBytes),
+        publicKey: bytesToHex(publicKeyBytes)
     };
 }
 
 // Helper: Sign a transaction
 function signTransaction(tx, privateKey) {
-    const key = ec.keyFromPrivate(privateKey, 'hex');
-    tx.signTransaction(key);
+    // Derive public key from private key
+    const privateKeyBytes = hexToBytes(privateKey);
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+    const wallet = {
+        privateKey: privateKey,
+        publicKey: bytesToHex(publicKeyBytes)
+    };
+    tx.signTransaction(wallet);
     return tx;
 }
 
