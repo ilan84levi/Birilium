@@ -10,8 +10,14 @@ const {
     MAX_MESSAGE_SIZE
 } = require('./p2p-security');
 
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { sha256 } = require('@noble/hashes/sha2.js');
+const { hmac } = require('@noble/hashes/hmac.js');
+const { bytesToHex, hexToBytes } = require('@noble/hashes/utils.js');
+
+// Configure hash functions for secp256k1 v3
+secp256k1.hashes.sha256 = sha256;
+secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 console.log('\n=================================');
 console.log('  P2P SECURITY TEST SUITE');
@@ -84,8 +90,8 @@ test('Invalid schema rejected', () => {
 // ========== TEST 2: Handshake ==========
 console.log('\nTEST 2: Handshake Verification\n');
 
-const nodeKey1 = ec.genKeyPair();
-const nodePrivateKey1 = nodeKey1.getPrivate('hex');
+const nodePrivateKeyBytes = secp256k1.utils.randomSecretKey();
+const nodePrivateKey1 = bytesToHex(nodePrivateKeyBytes);
 
 test('Create valid handshake', () => {
     const handshake = createHandshake(nodePrivateKey1);
@@ -217,15 +223,18 @@ test('Add peer', () => {
 
 test('Reject peer when max peers reached', () => {
     const peerManager = new PeerManager(2);
-    const key1 = ec.genKeyPair();
-    const key2 = ec.genKeyPair();
-    const key3 = ec.genKeyPair();
+    const pk1 = bytesToHex(secp256k1.utils.randomSecretKey());
+    const pk2 = bytesToHex(secp256k1.utils.randomSecretKey());
+    const pk3 = bytesToHex(secp256k1.utils.randomSecretKey());
+    const pubKey1 = bytesToHex(secp256k1.getPublicKey(hexToBytes(pk1), false));
+    const pubKey2 = bytesToHex(secp256k1.getPublicKey(hexToBytes(pk2), false));
+    const pubKey3 = bytesToHex(secp256k1.getPublicKey(hexToBytes(pk3), false));
 
-    peerManager.addPeer(key1.getPublic('hex'), {}, createHandshake(key1.getPrivate('hex')));
-    peerManager.addPeer(key2.getPublic('hex'), {}, createHandshake(key2.getPrivate('hex')));
+    peerManager.addPeer(pubKey1, {}, createHandshake(pk1));
+    peerManager.addPeer(pubKey2, {}, createHandshake(pk2));
 
     try {
-        peerManager.addPeer(key3.getPublic('hex'), {}, createHandshake(key3.getPrivate('hex')));
+        peerManager.addPeer(pubKey3, {}, createHandshake(pk3));
         throw new Error('Should reject 3rd peer');
     } catch (err) {
         if (!err.message.includes('Max peers reached')) throw err;

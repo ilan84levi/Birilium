@@ -12,8 +12,8 @@ const axios = require('axios'); // For PayPal API calls
 const Blockchain = require('./Blockchain');
 const Transaction = require('./Transaction');
 const Database = require('./database');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
+const secp256k1 = require('@noble/secp256k1');
+const { bytesToHex, hexToBytes } = require('@noble/hashes/utils.js');
 
 // Logging & Metrics (Phase 2.5)
 const logger = require('./logger');
@@ -140,8 +140,8 @@ async function initializeBlockchain() {
 initializeBlockchain().catch(console.error);
 
 // P2P Security: Generate node identity
-const nodePrivateKey = process.env.NODE_PRIVATE_KEY || ec.genKeyPair().getPrivate('hex');
-const nodePublicKey = ec.keyFromPrivate(nodePrivateKey, 'hex').getPublic('hex');
+const nodePrivateKey = process.env.NODE_PRIVATE_KEY || bytesToHex(secp256k1.utils.randomSecretKey());
+const nodePublicKey = bytesToHex(secp256k1.getPublicKey(hexToBytes(nodePrivateKey), false));
 
 // Initialize peer manager
 const peerManager = new PeerManager(MAX_PEERS);
@@ -208,9 +208,10 @@ app.get('/api/pending-transactions', (req, res) => {
 // Create a new wallet
 app.post('/api/wallet/create', (req, res) => {
     try {
-        const key = ec.genKeyPair();
-        const publicKey = key.getPublic('hex');
-        const privateKey = key.getPrivate('hex');
+        const privateKeyBytes = secp256k1.utils.randomSecretKey();
+        const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false); // uncompressed
+        const publicKey = bytesToHex(publicKeyBytes);
+        const privateKey = bytesToHex(privateKeyBytes);
 
         res.json({
             address: publicKey,
@@ -308,8 +309,13 @@ app.post('/api/transaction', authenticateAPIKey, (req, res) => {
 
         // Sign transaction
         try {
-            const key = ec.keyFromPrivate(privateKey, 'hex');
-            tx.signTransaction(key);
+            const privateKeyBytes = hexToBytes(privateKey);
+            const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+            const wallet = {
+                privateKey: privateKey,
+                publicKey: bytesToHex(publicKeyBytes)
+            };
+            tx.signTransaction(wallet);
         } catch (error) {
             return res.status(400).json({
                 success: false,
