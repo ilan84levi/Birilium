@@ -33,14 +33,14 @@ const TransactionSchema = z.object({
     signature: z.string().nullable()
 });
 
-// Block schema
+// Block schema - use passthrough to allow extra fields (index, difficulty, etc.)
 const BlockSchema = z.object({
     timestamp: z.number().int().positive(),
     transactions: z.array(TransactionSchema),
     previousHash: z.string(),
     hash: z.string(),
     nonce: z.number().int().min(0)
-});
+}).passthrough();
 
 // Handshake schema
 const HandshakeSchema = z.object({
@@ -125,11 +125,12 @@ function createHandshake(nodePrivateKey, version = '2.1.0') {
     const nodeId = bytesToHex(publicKeyBytes);
     const timestamp = Date.now();
 
-    // Sign handshake
+    // Sign handshake - @noble/secp256k1 v3 returns Signature object
     const message = nodeId + timestamp + version;
     const msgHash = sha256(utf8ToBytes(message));
-    const sigBytes = secp256k1.sign(msgHash, privateKeyBytes);
-    const signature = bytesToHex(sigBytes);
+    const sig = secp256k1.sign(msgHash, privateKeyBytes);
+    // Convert Signature to compact bytes (64 bytes: r + s)
+    const signature = bytesToHex(sig.toCompactRawBytes());
 
     return {
         nodeId,
@@ -153,7 +154,9 @@ function verifyHandshake(handshake, maxClockDrift = 300000) {
     try {
         const sigBytes = hexToBytes(handshake.signature);
         const publicKeyBytes = hexToBytes(handshake.nodeId);
-        const valid = secp256k1.verify(sigBytes, msgHash, publicKeyBytes);
+        // @noble/secp256k1 v3: Create Signature from compact bytes
+        const sig = secp256k1.Signature.fromCompact(sigBytes);
+        const valid = secp256k1.verify(sig, msgHash, publicKeyBytes);
         if (!valid) {
             throw new Error('Invalid handshake signature');
         }

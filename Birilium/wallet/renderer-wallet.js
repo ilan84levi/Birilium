@@ -16,9 +16,12 @@ secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 class BiriliumBlockchainWallet {
     constructor() {
-        // Connect directly to production server
-        // For decentralized mode, change to 'http://localhost:3001' and run local node
-        this.nodeUrl = 'https://birilium.com';
+        // Primary: Local node (P2P decentralized)
+        // Fallback: Production server (centralized)
+        this.localNodeUrl = 'http://localhost:3001';
+        this.serverUrl = 'https://birilium.com';
+        this.nodeUrl = this.localNodeUrl; // Start with local, will fallback if needed
+        this.usingLocalNode = true;
         this.walletAddress = null;
         this.privateKey = null;
         this.balance = 0;
@@ -50,46 +53,95 @@ class BiriliumBlockchainWallet {
     // Wait for node connection with retry logic
     async waitForNodeConnection() {
         console.log('Waiting for blockchain node connection...');
-        const checkConnection = async () => {
+
+        // Try to connect to a node (local first, then server fallback)
+        const tryConnect = async (url, name) => {
             try {
-                const response = await fetch(`${this.nodeUrl}/api/stats`, {
+                const response = await fetch(`${url}/api/stats`, {
                     method: 'GET',
-                    signal: AbortSignal.timeout(5000) // 5 second timeout
+                    signal: AbortSignal.timeout(5000)
                 });
-
                 if (response.ok) {
-                    this.isNodeConnected = true;
-                    console.log('✓ Connected to blockchain node');
-
-                    // Start syncing now that we're connected
-                    this.syncWithBlockchain();
-                    setInterval(() => this.syncWithBlockchain(), 5000);
-
-                    // Update global supply
-                    this.updateGlobalSupply();
-                    setInterval(() => this.updateGlobalSupply(), 10000);
-
                     return true;
                 }
             } catch (error) {
-                // Connection failed, will retry
-                console.log(`Node connection attempt ${this.nodeConnectionRetries + 1}/${this.maxRetries} failed`);
+                console.log(`${name} connection failed:`, error.message);
+            }
+            return false;
+        };
+
+        const checkConnection = async () => {
+            // Try local node first (decentralized P2P mode)
+            if (this.nodeConnectionRetries < 3) {
+                console.log(`Trying local node (attempt ${this.nodeConnectionRetries + 1}/3)...`);
+                if (await tryConnect(this.localNodeUrl, 'Local node')) {
+                    this.nodeUrl = this.localNodeUrl;
+                    this.usingLocalNode = true;
+                    this.isNodeConnected = true;
+                    console.log('✓ Connected to LOCAL node (P2P decentralized mode)');
+                    this.onNodeConnected();
+                    return;
+                }
+            }
+
+            // Try server fallback (centralized mode)
+            if (this.nodeConnectionRetries >= 3 && this.nodeConnectionRetries < 5) {
+                console.log(`Trying server fallback (attempt ${this.nodeConnectionRetries - 2}/2)...`);
+                if (await tryConnect(this.serverUrl, 'Server')) {
+                    this.nodeUrl = this.serverUrl;
+                    this.usingLocalNode = false;
+                    this.isNodeConnected = true;
+                    console.log('✓ Connected to SERVER (centralized fallback mode)');
+                    this.onNodeConnected();
+                    return;
+                }
             }
 
             this.nodeConnectionRetries++;
 
-            if (this.nodeConnectionRetries < this.maxRetries) {
-                // Retry after 3 seconds
-                setTimeout(checkConnection, 3000);
+            if (this.nodeConnectionRetries < 5) {
+                setTimeout(checkConnection, 2000);
             } else {
-                console.warn('⚠️ Could not connect to blockchain node after multiple attempts');
-                console.warn('Some features may not work until the node is running');
-                // Show warning to user
+                console.warn('⚠️ Could not connect to any node');
                 this.showNodeConnectionWarning();
             }
         };
 
         checkConnection();
+    }
+
+    onNodeConnected() {
+        // Start syncing now that we're connected
+        this.syncWithBlockchain();
+        setInterval(() => this.syncWithBlockchain(), 5000);
+
+        // Update global supply
+        this.updateGlobalSupply();
+        setInterval(() => this.updateGlobalSupply(), 10000);
+
+        // Show connection mode indicator
+        this.showConnectionMode();
+    }
+
+    showConnectionMode() {
+        const existing = document.getElementById('connectionMode');
+        if (existing) existing.remove();
+
+        const indicator = document.createElement('div');
+        indicator.id = 'connectionMode';
+        indicator.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            z-index: 1000;
+            background: ${this.usingLocalNode ? '#27ae60' : '#3498db'};
+            color: white;
+        `;
+        indicator.textContent = this.usingLocalNode ? '🔗 P2P Mode (Local Node)' : '☁️ Server Mode';
+        document.body.appendChild(indicator);
     }
 
     // Show warning when node is not connected
