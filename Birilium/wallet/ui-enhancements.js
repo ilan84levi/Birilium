@@ -117,7 +117,7 @@ const NetworkStatus = {
     peers: 0,
     latency: 0,
 
-    init(nodeUrl = 'http://localhost:3001') {
+    init(nodeUrl = 'https://birilium.com') {
         this.nodeUrl = nodeUrl;
         this.createStatusElement();
         this.startMonitoring();
