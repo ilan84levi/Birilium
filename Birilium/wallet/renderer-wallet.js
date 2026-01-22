@@ -16,8 +16,8 @@ secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 class BiriliumBlockchainWallet {
     constructor() {
-        // Connect to production server instead of local node
-        // Change to 'http://localhost:3001' if you want to use local node
+        // Connect directly to production server
+        // For decentralized mode, change to 'http://localhost:3001' and run local node
         this.nodeUrl = 'https://birilium.com';
         this.walletAddress = null;
         this.privateKey = null;
