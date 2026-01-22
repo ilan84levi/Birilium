@@ -1,6 +1,6 @@
 {
   "name": "birilium-wallet",
-  "version": "1.0.7",
+  "version": "1.2.0",
   "description": "Birilium Cryptocurrency Desktop Wallet",
   "main": "main.js",
   "scripts": {
@@ -125,7 +125,7 @@
     "bip32": "^5.0.0",
     "bip39": "^3.1.0",
     "crypto-js": "^4.2.0",
-    "elliptic": "^6.6.1",
+    "@noble/secp256k1": "^3.0.0",
     "qrcode": "^1.5.4",
     "tiny-secp256k1": "^2.2.4"
   }

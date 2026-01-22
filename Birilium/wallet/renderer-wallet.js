@@ -1189,16 +1189,6 @@ class BiriliumBlockchainWallet {
                 console.log('Terms accept button clicked');
                 this.acceptTerms();
             });
-
-            // DEBUG: Auto-accept after 30 seconds if user is stuck
-            setTimeout(() => {
-                const termsAccepted = localStorage.getItem('biriliumTermsAccepted');
-                const termsOverlay = document.getElementById('termsOverlay');
-                if (!termsAccepted && termsOverlay && termsOverlay.style.display !== 'none') {
-                    console.warn('Terms modal still showing after 30s - auto-accepting for better UX');
-                    this.acceptTerms();
-                }
-            }, 30000);
         }
 
         // Navigation
