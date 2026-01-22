@@ -786,6 +786,450 @@ app.get('/api/admin/websocket/status', authenticateAdmin, async (req, res) => {
     });
 });
 
+// ========== ADMIN MINING ENDPOINT (NO SUBSCRIPTION REQUIRED) ==========
+
+// Admin-only mining endpoint - bypasses subscription checks
+app.post('/api/admin/mine', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_MINE'), async (req, res) => {
+    try {
+        const { minerAddress } = req.body;
+
+        if (!minerAddress) {
+            return res.status(400).json({
+                success: false,
+                error: 'Miner address required'
+            });
+        }
+
+        // Validate address format
+        if (minerAddress.length < 10) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid miner address format'
+            });
+        }
+
+        console.log(`[Admin] Mining new block for ${minerAddress} (admin bypass)...`);
+        const block = await biriliumChain.minePendingTransactions(minerAddress);
+
+        if (!block) {
+            return res.status(400).json({
+                success: false,
+                error: 'Maximum supply reached or mining failed'
+            });
+        }
+
+        // Broadcast new block to P2P network
+        broadcast(responseNewBlockMsg(block));
+
+        // Notify WebSocket clients about new block
+        wsService.notifyNewBlock(block);
+
+        // Invalidate relevant caches
+        cache.invalidateOnChange('block_mined', block);
+
+        logger.info({ minerAddress, blockHeight: block.index, hash: block.hash }, 'Admin mined block');
+
+        res.json({
+            success: true,
+            message: 'Block mined successfully by admin!',
+            block: block,
+            reward: biriliumChain.miningReward,
+            difficulty: biriliumChain.difficulty,
+            adminMining: true
+        });
+    } catch (error) {
+        console.error('Admin mining error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get all blocks with pagination (for admin dashboard)
+app.get('/api/admin/blocks', authenticateAdmin, async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = parseInt(req.query.offset) || 0;
+
+        // Get blocks in reverse order (newest first)
+        const totalBlocks = biriliumChain.chain.length;
+        const startIndex = Math.max(0, totalBlocks - offset - limit);
+        const endIndex = totalBlocks - offset;
+
+        const blocks = [];
+        for (let i = endIndex - 1; i >= startIndex && i >= 0; i--) {
+            const block = biriliumChain.chain[i];
+            blocks.push({
+                index: block.index,
+                hash: block.hash,
+                previousHash: block.previousHash,
+                timestamp: block.timestamp,
+                nonce: block.nonce,
+                difficulty: block.difficulty || biriliumChain.difficulty,
+                transactionCount: block.transactions ? block.transactions.length : 0,
+                miner: block.transactions && block.transactions.length > 0 ? block.transactions[0].toAddress : null,
+                reward: block.transactions && block.transactions.length > 0 ? block.transactions[0].amount : 0
+            });
+        }
+
+        res.json({
+            success: true,
+            data: blocks,
+            pagination: {
+                total: totalBlocks,
+                limit,
+                offset,
+                hasMore: offset + limit < totalBlocks
+            }
+        });
+    } catch (error) {
+        console.error('Blocks fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get block details by hash or index
+app.get('/api/admin/blocks/:identifier', authenticateAdmin, async (req, res) => {
+    try {
+        const identifier = req.params.identifier;
+        let block = null;
+
+        // Check if identifier is a number (index) or hash
+        if (/^\d+$/.test(identifier)) {
+            const index = parseInt(identifier);
+            if (index >= 0 && index < biriliumChain.chain.length) {
+                block = biriliumChain.chain[index];
+            }
+        } else {
+            // Search by hash
+            block = biriliumChain.chain.find(b => b.hash === identifier);
+        }
+
+        if (!block) {
+            return res.status(404).json({
+                success: false,
+                error: 'Block not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                ...block,
+                confirmations: biriliumChain.chain.length - block.index
+            }
+        });
+    } catch (error) {
+        console.error('Block detail error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get detailed statistics for admin dashboard
+app.get('/api/admin/stats/detailed', authenticateAdmin, async (req, res) => {
+    try {
+        // Calculate total transactions
+        let totalTransactions = 0;
+        let totalBIRMined = 0;
+        const minerStats = {};
+
+        for (const block of biriliumChain.chain) {
+            if (block.transactions) {
+                totalTransactions += block.transactions.length;
+
+                // Track mining rewards
+                for (const tx of block.transactions) {
+                    if (!tx.fromAddress && tx.toAddress) {
+                        // Mining reward transaction
+                        totalBIRMined += tx.amount;
+                        if (!minerStats[tx.toAddress]) {
+                            minerStats[tx.toAddress] = { blocks: 0, rewards: 0 };
+                        }
+                        minerStats[tx.toAddress].blocks++;
+                        minerStats[tx.toAddress].rewards += tx.amount;
+                    }
+                }
+            }
+        }
+
+        // Get top miners
+        const topMiners = Object.entries(minerStats)
+            .map(([address, stats]) => ({ address, ...stats }))
+            .sort((a, b) => b.blocks - a.blocks)
+            .slice(0, 10);
+
+        // Get database stats
+        let dbStats = { walletCreations: 0, activeSubscriptions: 0, totalRevenue: 0 };
+        if (database && database.isConnected) {
+            const walletResult = database.db.prepare(
+                "SELECT COUNT(*) as count FROM analytics WHERE event = 'wallet_created'"
+            ).get();
+            dbStats.walletCreations = walletResult.count;
+
+            const subResult = database.db.prepare(
+                "SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'"
+            ).get();
+            dbStats.activeSubscriptions = subResult.count;
+
+            const revenueResult = database.db.prepare(
+                "SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions"
+            ).get();
+            dbStats.totalRevenue = revenueResult.total;
+        }
+
+        res.json({
+            success: true,
+            data: {
+                blockchain: {
+                    height: biriliumChain.chain.length - 1,
+                    totalBlocks: biriliumChain.chain.length,
+                    totalTransactions,
+                    totalBIRMined: totalBIRMined.toFixed(8),
+                    currentSupply: biriliumChain.currentSupply.toFixed(8),
+                    maxSupply: biriliumChain.maxSupply,
+                    difficulty: biriliumChain.difficulty,
+                    pendingTransactions: biriliumChain.pendingTransactions.length
+                },
+                mining: {
+                    reward: biriliumChain.miningReward,
+                    topMiners
+                },
+                analytics: dbStats,
+                network: {
+                    peers: peerManager.getAllPeers().length,
+                    maxPeers: MAX_PEERS
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Detailed stats error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get all transactions with pagination (for admin dashboard)
+app.get('/api/admin/transactions', authenticateAdmin, async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = parseInt(req.query.offset) || 0;
+        const search = req.query.search || '';
+
+        // Get all transactions from all blocks
+        const allTransactions = [];
+        for (let i = biriliumChain.chain.length - 1; i >= 0; i--) {
+            const block = biriliumChain.chain[i];
+            if (block.transactions) {
+                block.transactions.forEach(tx => {
+                    allTransactions.push({
+                        ...tx,
+                        blockHeight: i,
+                        blockHash: block.hash,
+                        blockTimestamp: block.timestamp,
+                        confirmations: biriliumChain.chain.length - i
+                    });
+                });
+            }
+        }
+
+        // Filter by search if provided
+        let filteredTx = allTransactions;
+        if (search) {
+            const searchLower = search.toLowerCase();
+            filteredTx = allTransactions.filter(tx =>
+                (tx.fromAddress && tx.fromAddress.toLowerCase().includes(searchLower)) ||
+                (tx.toAddress && tx.toAddress.toLowerCase().includes(searchLower)) ||
+                (tx.signature && tx.signature.toLowerCase().includes(searchLower)) ||
+                (tx.blockHash && tx.blockHash.toLowerCase().includes(searchLower))
+            );
+        }
+
+        // Sort by timestamp (newest first)
+        filteredTx.sort((a, b) => b.blockTimestamp - a.blockTimestamp);
+
+        // Paginate
+        const paginatedTx = filteredTx.slice(offset, offset + limit);
+
+        res.json({
+            success: true,
+            data: paginatedTx,
+            pagination: {
+                total: filteredTx.length,
+                limit,
+                offset,
+                hasMore: offset + limit < filteredTx.length
+            }
+        });
+    } catch (error) {
+        console.error('Transactions fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get subscription history with pagination
+app.get('/api/admin/subscriptions', authenticateAdmin, async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = parseInt(req.query.offset) || 0;
+        const status = req.query.status || 'all';
+
+        if (!database || !database.isConnected) {
+            return res.json({
+                success: true,
+                data: [],
+                pagination: { total: 0, limit, offset, hasMore: false }
+            });
+        }
+
+        // Build query based on status filter
+        let query = 'SELECT * FROM subscriptions';
+        const params = [];
+
+        if (status !== 'all') {
+            query += ' WHERE status = ?';
+            params.push(status);
+        }
+
+        query += ' ORDER BY startTime DESC LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+
+        const subscriptions = database.db.prepare(query).all(...params);
+
+        // Get total count
+        let countQuery = 'SELECT COUNT(*) as count FROM subscriptions';
+        if (status !== 'all') {
+            countQuery += ' WHERE status = ?';
+        }
+        const countResult = status !== 'all'
+            ? database.db.prepare(countQuery).get(status)
+            : database.db.prepare(countQuery).get();
+
+        res.json({
+            success: true,
+            data: subscriptions.map(sub => ({
+                ...sub,
+                startDate: new Date(sub.startTime).toISOString(),
+                cancelledDate: sub.cancelledAt ? new Date(sub.cancelledAt).toISOString() : null
+            })),
+            pagination: {
+                total: countResult.count,
+                limit,
+                offset,
+                hasMore: offset + limit < countResult.count
+            }
+        });
+    } catch (error) {
+        console.error('Subscriptions fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Track wallet download (called from website/installer)
+app.post('/api/analytics/download', async (req, res) => {
+    try {
+        const { platform, version, timestamp, userAgent } = req.body;
+
+        // Store analytics event if database is connected
+        if (database && database.isConnected) {
+            const now = Date.now();
+            const eventTime = timestamp ? new Date(timestamp).getTime() : now;
+
+            const metadata = JSON.stringify({
+                platform: platform || 'unknown',
+                version: version || 'unknown',
+                userAgent: userAgent || req.headers['user-agent'] || 'unknown'
+            });
+
+            const insertStmt = database.db.prepare(`
+                INSERT INTO analytics (event, walletAddress, timestamp, metadata, createdAt)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            insertStmt.run('wallet_download', 'N/A', eventTime, metadata, now);
+        }
+
+        logger.info({ platform, version }, 'Wallet download tracked');
+
+        res.json({
+            success: true,
+            message: 'Download tracked'
+        });
+    } catch (error) {
+        console.error('Download tracking error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get download statistics
+app.get('/api/admin/stats/downloads', authenticateAdmin, async (req, res) => {
+    try {
+        if (!database || !database.isConnected) {
+            return res.json({
+                success: true,
+                data: { total: 0, byPlatform: {}, byVersion: {} }
+            });
+        }
+
+        // Get total downloads
+        const totalResult = database.db.prepare(
+            "SELECT COUNT(*) as count FROM analytics WHERE event = 'wallet_download'"
+        ).get();
+
+        // Get downloads by platform
+        const downloads = database.db.prepare(
+            "SELECT metadata FROM analytics WHERE event = 'wallet_download'"
+        ).all();
+
+        const byPlatform = {};
+        const byVersion = {};
+
+        downloads.forEach(d => {
+            try {
+                const meta = JSON.parse(d.metadata);
+                const platform = meta.platform || 'unknown';
+                const version = meta.version || 'unknown';
+
+                byPlatform[platform] = (byPlatform[platform] || 0) + 1;
+                byVersion[version] = (byVersion[version] || 0) + 1;
+            } catch (e) {
+                byPlatform['unknown'] = (byPlatform['unknown'] || 0) + 1;
+            }
+        });
+
+        res.json({
+            success: true,
+            data: {
+                total: totalResult.count,
+                byPlatform,
+                byVersion
+            }
+        });
+    } catch (error) {
+        console.error('Download stats error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // ========== NEW ENHANCEMENT ENDPOINTS ==========
 
 // Logout endpoint - blacklists the current token
