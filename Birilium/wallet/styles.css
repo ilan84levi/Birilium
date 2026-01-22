@@ -817,6 +817,9 @@ h2 {
     border-top: 2px solid #e0e0e0;
     background: #f8f9fa;
     border-radius: 0 0 16px 16px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
 }
 
 .terms-checkbox {
@@ -833,6 +836,9 @@ h2 {
     width: 20px;
     height: 20px;
     cursor: pointer;
+    pointer-events: auto;
+    -webkit-appearance: checkbox;
+    appearance: checkbox;
 }
 
 .terms-actions .btn-primary {
