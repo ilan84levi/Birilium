@@ -83,6 +83,7 @@ app.use(helmet({
         directives: {
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://www.paypal.com", "https://www.paypalobjects.com"],
+            scriptSrcAttr: ["'unsafe-inline'"],  // Allow onclick handlers
             frameSrc: ["'self'", "https://www.paypal.com"],
             connectSrc: ["'self'", "https://api.paypal.com", "https://api-m.paypal.com"],
             imgSrc: ["'self'", "data:", "https:"],
