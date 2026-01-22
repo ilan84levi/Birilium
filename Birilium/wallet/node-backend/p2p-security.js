@@ -125,12 +125,11 @@ function createHandshake(nodePrivateKey, version = '2.1.0') {
     const nodeId = bytesToHex(publicKeyBytes);
     const timestamp = Date.now();
 
-    // Sign handshake - @noble/secp256k1 v3 returns Signature object
+    // Sign handshake - @noble/secp256k1 v3 returns Uint8Array directly
     const message = nodeId + timestamp + version;
     const msgHash = sha256(utf8ToBytes(message));
-    const sig = secp256k1.sign(msgHash, privateKeyBytes);
-    // Convert Signature to compact bytes (64 bytes: r + s)
-    const signature = bytesToHex(sig.toCompactRawBytes());
+    const sigBytes = secp256k1.sign(msgHash, privateKeyBytes);
+    const signature = bytesToHex(sigBytes);
 
     return {
         nodeId,
@@ -154,9 +153,8 @@ function verifyHandshake(handshake, maxClockDrift = 300000) {
     try {
         const sigBytes = hexToBytes(handshake.signature);
         const publicKeyBytes = hexToBytes(handshake.nodeId);
-        // @noble/secp256k1 v3: Create Signature from compact bytes
-        const sig = secp256k1.Signature.fromCompact(sigBytes);
-        const valid = secp256k1.verify(sig, msgHash, publicKeyBytes);
+        // @noble/secp256k1 v3: verify accepts Uint8Array directly
+        const valid = secp256k1.verify(sigBytes, msgHash, publicKeyBytes);
         if (!valid) {
             throw new Error('Invalid handshake signature');
         }
