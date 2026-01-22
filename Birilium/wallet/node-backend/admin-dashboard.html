@@ -981,9 +981,30 @@
                             <label>Miner Address (Reward Recipient)</label>
                             <input type="text" id="minerAddress" placeholder="Enter wallet address to receive mining rewards">
                         </div>
-                        <button class="btn" id="mineBtn" onclick="mineBlock()">
-                            <span id="mineBtnText">Mine Block</span>
-                        </button>
+                        <div class="form-group">
+                            <label>Mining Interval (seconds between blocks)</label>
+                            <input type="number" id="miningInterval" value="5" min="1" max="60" style="width: 100px;">
+                        </div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn" id="mineBtn" onclick="mineBlock()">
+                                <span id="mineBtnText">Mine Single Block</span>
+                            </button>
+                            <button class="btn btn-success" id="autoMineBtn" onclick="toggleAutoMine()">
+                                <span id="autoMineBtnText">▶ Start Auto-Mining</span>
+                            </button>
+                            <button class="btn btn-warning" id="stopMineBtn" onclick="stopAutoMine()" style="display: none;">
+                                <span>⏹ Stop Mining</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mining-stats" id="miningStats" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                        <h3 style="margin-bottom: 10px;">Auto-Mining Status</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                            <div><strong>Status:</strong> <span id="autoMineStatus">Stopped</span></div>
+                            <div><strong>Blocks Mined:</strong> <span id="autoMineCount">0</span></div>
+                            <div><strong>Total BIR:</strong> <span id="autoMineBIR">0</span></div>
+                            <div><strong>Errors:</strong> <span id="autoMineErrors">0</span></div>
+                        </div>
                     </div>
                     <div class="mining-result" id="miningResult"></div>
                 </div>
@@ -1588,6 +1609,112 @@
 
             document.getElementById('minerAddress').value = minerAddress;
             await mineBlock();
+        }
+
+        // ==================== AUTO-MINING ====================
+        let autoMineInterval = null;
+        let autoMineStats = { blocks: 0, bir: 0, errors: 0 };
+
+        function toggleAutoMine() {
+            if (autoMineInterval) {
+                stopAutoMine();
+            } else {
+                startAutoMine();
+            }
+        }
+
+        function startAutoMine() {
+            const minerAddress = document.getElementById('minerAddress').value;
+            const intervalSeconds = parseInt(document.getElementById('miningInterval').value) || 5;
+
+            if (!minerAddress) {
+                showToast('Please enter a miner address first', 'error');
+                return;
+            }
+
+            // Reset stats
+            autoMineStats = { blocks: 0, bir: 0, errors: 0 };
+            updateAutoMineDisplay();
+
+            // Show stats and stop button
+            document.getElementById('miningStats').style.display = 'block';
+            document.getElementById('autoMineBtn').style.display = 'none';
+            document.getElementById('stopMineBtn').style.display = 'inline-block';
+            document.getElementById('autoMineStatus').textContent = 'Running...';
+            document.getElementById('autoMineStatus').style.color = '#2ecc71';
+
+            showToast(`Auto-mining started! Mining every ${intervalSeconds} seconds`, 'success');
+
+            // Start mining immediately, then at intervals
+            autoMineOnce(minerAddress);
+            autoMineInterval = setInterval(() => autoMineOnce(minerAddress), intervalSeconds * 1000);
+        }
+
+        function stopAutoMine() {
+            if (autoMineInterval) {
+                clearInterval(autoMineInterval);
+                autoMineInterval = null;
+            }
+
+            document.getElementById('autoMineBtn').style.display = 'inline-block';
+            document.getElementById('stopMineBtn').style.display = 'none';
+            document.getElementById('autoMineStatus').textContent = 'Stopped';
+            document.getElementById('autoMineStatus').style.color = '#e74c3c';
+
+            showToast(`Auto-mining stopped. Mined ${autoMineStats.blocks} blocks (${autoMineStats.bir} BIR)`, 'info');
+        }
+
+        async function autoMineOnce(minerAddress) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/mine`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ minerAddress })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    autoMineStats.blocks++;
+                    autoMineStats.bir += (data.reward || 10);
+                    updateAutoMineDisplay();
+
+                    // Update the mining result display
+                    const resultDiv = document.getElementById('miningResult');
+                    resultDiv.innerHTML = `
+                        <strong style="color: #2ecc71;">✓ Block #${data.block?.index} mined!</strong><br>
+                        Hash: ${data.block?.hash?.substring(0, 20)}...<br>
+                        Reward: ${data.reward || 10} BIR
+                    `;
+                    resultDiv.classList.add('show');
+
+                    // Refresh data
+                    loadDashboardData();
+                } else {
+                    autoMineStats.errors++;
+                    updateAutoMineDisplay();
+                    console.error('Mining failed:', data.error);
+
+                    // If max supply reached, stop auto-mining
+                    if (data.error && data.error.includes('Maximum supply')) {
+                        stopAutoMine();
+                        showToast('Maximum supply reached! Auto-mining stopped.', 'warning');
+                    }
+                }
+            } catch (error) {
+                autoMineStats.errors++;
+                updateAutoMineDisplay();
+                console.error('Auto-mine error:', error);
+            }
+        }
+
+        function updateAutoMineDisplay() {
+            document.getElementById('autoMineCount').textContent = autoMineStats.blocks;
+            document.getElementById('autoMineBIR').textContent = autoMineStats.bir;
+            document.getElementById('autoMineErrors').textContent = autoMineStats.errors;
         }
 
         function loadMiningHistory() {
