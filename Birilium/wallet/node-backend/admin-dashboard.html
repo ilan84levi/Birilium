@@ -72,17 +72,24 @@
 
         .toggle-password-btn {
             position: absolute;
-            right: 10px;
-            background: none;
-            border: none;
+            right: 5px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 18px;
-            padding: 5px;
+            font-size: 20px;
+            padding: 5px 10px;
             color: #666;
+            transition: all 0.2s;
         }
 
         .toggle-password-btn:hover {
+            background: #e0e0e0;
             color: #333;
+        }
+
+        .toggle-password-btn:active {
+            background: #d0d0d0;
         }
 
         .show-password-checkbox {
@@ -428,16 +435,38 @@
         }
 
         .hash-full {
-            max-width: 300px;
+            max-width: 150px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             cursor: pointer;
+            color: #3498db;
+            text-decoration: underline;
+            text-decoration-style: dotted;
+        }
+
+        .hash-full:hover {
+            color: #2980b9;
         }
 
         .hash-full.expanded {
+            max-width: none;
             white-space: normal;
             word-break: break-all;
+            background: #f8f9fa;
+            padding: 5px;
+            border-radius: 3px;
+            text-decoration: none;
+        }
+
+        .hash-full::after {
+            content: ' [click to expand]';
+            font-size: 10px;
+            color: #95a5a6;
+        }
+
+        .hash-full.expanded::after {
+            content: ' [click to collapse]';
         }
 
         .copy-btn {
@@ -1164,26 +1193,35 @@
             const eyeIcon = document.getElementById('eyeIcon');
             const checkbox = document.getElementById('showPasswordCheckbox');
 
+            console.log('Password toggle init:', { passwordInput, toggleBtn, eyeIcon, checkbox });
+
             function togglePassword() {
+                if (!passwordInput) return;
                 if (passwordInput.type === 'password') {
                     passwordInput.type = 'text';
-                    eyeIcon.innerHTML = '&#128584;'; // See-no-evil monkey
-                    checkbox.checked = true;
+                    if (eyeIcon) eyeIcon.innerHTML = '&#128584;'; // See-no-evil monkey
+                    if (checkbox) checkbox.checked = true;
                 } else {
                     passwordInput.type = 'password';
-                    eyeIcon.innerHTML = '&#128065;'; // Eye
-                    checkbox.checked = false;
+                    if (eyeIcon) eyeIcon.innerHTML = '&#128065;'; // Eye
+                    if (checkbox) checkbox.checked = false;
                 }
+                console.log('Password type now:', passwordInput.type);
             }
 
-            toggleBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                togglePassword();
-            });
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    togglePassword();
+                });
+            }
 
-            checkbox.addEventListener('change', function() {
-                togglePassword();
-            });
+            if (checkbox) {
+                checkbox.addEventListener('change', function() {
+                    togglePassword();
+                });
+            }
         });
 
         // ==================== LOGIN ====================
