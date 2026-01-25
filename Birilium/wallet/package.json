@@ -39,6 +39,7 @@
       "styles.css",
       "renderer-wallet.js",
       "wallet-security.js",
+      "ui-enhancements.js",
       "debug-terms.html",
       "icon.png",
       "package.json",

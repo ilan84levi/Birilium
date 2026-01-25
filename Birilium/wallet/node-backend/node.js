@@ -575,6 +575,11 @@ app.get('/api/paypal-config', (req, res) => {
 
 // ========== ADMIN & SUBSCRIPTION ENDPOINTS ==========
 
+// Serve admin dashboard HTML page
+app.get('/api/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
 // Admin login endpoint (JWT-based)
 app.post('/api/admin/auth/login', async (req, res) => {
     const { username, password } = req.body;
