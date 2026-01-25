@@ -93,6 +93,9 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false  // Allow PayPal iframes
 }));
 
+// Trust proxy (nginx) - required for rate limiting behind reverse proxy
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(bodyParser.json());
 
