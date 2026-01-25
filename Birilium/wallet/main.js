@@ -6,6 +6,39 @@ const fs = require('fs');
 let mainWindow;
 let nodeProcess = null;
 let nodeStarted = false;
+let nodeAvailable = false; // Track if system Node.js is available
+
+// Check if Node.js is installed on the system
+function checkNodeAvailable() {
+  return new Promise((resolve) => {
+    const testProcess = spawn('node', ['--version'], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let version = '';
+    testProcess.stdout.on('data', (data) => {
+      version = data.toString().trim();
+    });
+
+    testProcess.on('error', () => {
+      console.log('Node.js not found on system - using server-only mode');
+      resolve(false);
+    });
+
+    testProcess.on('exit', (code) => {
+      if (code === 0 && version) {
+        console.log('System Node.js found:', version);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+
+    // Timeout after 5 seconds
+    setTimeout(() => resolve(false), 5000);
+  });
+}
 
 // Path to the blockchain node (bundled inside wallet)
 const NODE_PATH = app.isPackaged
@@ -25,17 +58,31 @@ function sendDebugLog(message) {
 }
 
 function startBlockchainNode() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     sendDebugLog('==> startBlockchainNode() called');
+
+    // First check if Node.js is available on the system
+    sendDebugLog('==> Checking if Node.js is installed on system...');
+    nodeAvailable = await checkNodeAvailable();
+
+    if (!nodeAvailable) {
+      sendDebugLog('==> Node.js not installed - wallet will use server-only mode');
+      sendDebugLog('==> Users can still use the wallet via https://birilium.com');
+      console.log('✓ Server-only mode enabled (Node.js not found)');
+      // Resolve successfully - wallet will work in server mode
+      resolve({ serverOnly: true });
+      return;
+    }
+
+    sendDebugLog('==> Node.js is available, checking for node backend...');
     sendDebugLog('==> NODE_PATH: ' + NODE_PATH);
     sendDebugLog('==> Checking if node.js exists...');
 
     // Check if node.js exists
     if (!fs.existsSync(NODE_PATH)) {
-      const errorMsg = 'Blockchain node not found at: ' + NODE_PATH;
-      console.error(errorMsg);
-      sendDebugLog('==> ERROR: ' + errorMsg);
-      reject(new Error(errorMsg));
+      sendDebugLog('==> Node backend not found - using server-only mode');
+      console.log('✓ Server-only mode enabled (backend not bundled)');
+      resolve({ serverOnly: true });
       return;
     }
 
@@ -178,14 +225,26 @@ function stopBlockchainNode() {
         resolve();
       });
 
-      // Try graceful shutdown first
-      nodeProcess.kill('SIGTERM');
+      // Try graceful shutdown first (cross-platform)
+      if (process.platform === 'win32') {
+        // Windows: Use default termination (no signal support)
+        nodeProcess.kill();
+      } else {
+        // Unix/Linux/macOS: Use SIGTERM for graceful shutdown
+        nodeProcess.kill('SIGTERM');
+      }
 
       // Force kill after 5 seconds
       setTimeout(() => {
         if (nodeProcess) {
           console.log('Force killing blockchain node...');
-          nodeProcess.kill('SIGKILL');
+          if (process.platform === 'win32') {
+            // Windows: Use default termination
+            nodeProcess.kill();
+          } else {
+            // Unix/Linux/macOS: Use SIGKILL for force termination
+            nodeProcess.kill('SIGKILL');
+          }
           nodeProcess = null;
           resolve();
         }
@@ -265,7 +324,8 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send('node-status', {
       started: nodeStarted,
-      apiUrl: `http://localhost:${process.env.HTTP_PORT || '3001'}`
+      serverOnly: !nodeAvailable || !nodeStarted,
+      apiUrl: nodeStarted ? `http://localhost:${process.env.HTTP_PORT || '3001'}` : 'https://birilium.com'
     });
   });
 }
@@ -274,7 +334,8 @@ function createWindow() {
 ipcMain.handle('get-node-status', () => {
   return {
     started: nodeStarted,
-    apiUrl: `http://localhost:${process.env.HTTP_PORT || '3001'}`,
+    serverOnly: !nodeAvailable || !nodeStarted,
+    apiUrl: nodeStarted ? `http://localhost:${process.env.HTTP_PORT || '3001'}` : 'https://birilium.com',
     p2pPort: process.env.P2P_PORT || '6001'
   };
 });
@@ -303,8 +364,21 @@ app.on('ready', async () => {
   try {
     sendDebugLog('====== ELECTRON APP READY ======');
     sendDebugLog('==> Attempting to start blockchain node...');
-    await startBlockchainNode();
-    sendDebugLog('==> Blockchain node started successfully!');
+    const result = await startBlockchainNode();
+
+    if (result && result.serverOnly) {
+      sendDebugLog('==> Running in server-only mode');
+      // Notify renderer about server-only mode
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('node-status', {
+          started: false,
+          serverOnly: true,
+          apiUrl: 'https://birilium.com'
+        });
+      }
+    } else {
+      sendDebugLog('==> Blockchain node started successfully!');
+    }
   } catch (error) {
     const errorMsg = 'Failed to start application: ' + error.message;
     console.error(errorMsg);
@@ -312,10 +386,15 @@ app.on('ready', async () => {
     sendDebugLog('==> CRITICAL ERROR: ' + errorMsg);
     sendDebugLog('==> Error stack: ' + error.stack);
 
+    // Even if local node fails, wallet can still work via server
+    sendDebugLog('==> Falling back to server-only mode');
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('node-error',
-        `Failed to start blockchain node: ${error.message}`
-      );
+      mainWindow.webContents.send('node-status', {
+        started: false,
+        serverOnly: true,
+        apiUrl: 'https://birilium.com',
+        error: error.message
+      });
     }
   }
 });
