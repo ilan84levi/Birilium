@@ -19,7 +19,7 @@ class BiriliumBlockchainWallet {
         // Primary: Local node (P2P decentralized)
         // Fallback: Production server (centralized)
         this.localNodeUrl = 'http://localhost:3001';
-        this.serverUrl = 'https://birilium.com';
+        this.serverUrl = 'https://api.birilium.com';
         this.nodeUrl = this.localNodeUrl; // Start with local, will fallback if needed
         this.usingLocalNode = true;
         this.walletAddress = null;
