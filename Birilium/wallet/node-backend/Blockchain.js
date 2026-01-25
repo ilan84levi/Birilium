@@ -46,12 +46,13 @@ class Blockchain {
             const state = await this.database.loadBlockchainState();
 
             if (blocks && blocks.length > 0) {
-                this.chain = blocks.map(blockData => {
+                this.chain = blocks.map((blockData, index) => {
                     const Block = require('./Block');
                     const block = new Block(
                         blockData.timestamp,
                         blockData.transactions,
-                        blockData.previousHash
+                        blockData.previousHash,
+                        blockData.index !== undefined ? blockData.index : index  // Use stored index or position
                     );
                     block.hash = blockData.hash;
                     block.nonce = blockData.nonce;
@@ -93,7 +94,7 @@ class Blockchain {
     }
 
     createGenesisBlock() {
-        const genesisBlock = new Block(Date.now(), [], '0');
+        const genesisBlock = new Block(Date.now(), [], '0', 0);  // Index 0 for genesis
         genesisBlock.hash = genesisBlock.calculateHash();
         return genesisBlock;
     }
@@ -243,7 +244,8 @@ class Blockchain {
         const block = new Block(
             Date.now(),
             txsToInclude,
-            this.getLatestBlock().hash
+            this.getLatestBlock().hash,
+            this.chain.length  // Block index
         );
 
         console.log('Mining block...');

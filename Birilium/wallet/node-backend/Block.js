@@ -1,7 +1,8 @@
 const SHA256 = require('crypto-js/sha256');
 
 class Block {
-    constructor(timestamp, transactions, previousHash = '') {
+    constructor(timestamp, transactions, previousHash = '', index = 0) {
+        this.index = index;
         this.timestamp = timestamp;
         this.transactions = transactions;
         this.previousHash = previousHash;
