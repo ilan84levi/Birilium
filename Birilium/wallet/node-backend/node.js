@@ -2077,11 +2077,18 @@ const replaceChain = (newBlocks) => {
         biriliumChain.balanceCacheDirty = true;
         biriliumChain.noncesCacheDirty = true;
 
-        // Save to database
+        // Save all blocks to database
         if (database && database.isConnected) {
-            database.saveBlockchain(convertedBlocks).catch(err => {
-                console.error('Failed to save synced blockchain:', err.message);
-            });
+            (async () => {
+                for (const block of convertedBlocks) {
+                    try {
+                        await database.saveBlock(block, block.index);
+                    } catch (err) {
+                        console.error(`Failed to save block ${block.index}:`, err.message);
+                    }
+                }
+                console.log(`✓ Saved ${convertedBlocks.length} blocks to database`);
+            })();
         }
 
         broadcast(responseLatestMsg());
