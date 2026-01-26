@@ -2023,7 +2023,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
+                        'Authorization': `Bearer ${accessToken}`
                     }
                 });
 
@@ -2098,7 +2098,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${authToken}`
+                            'Authorization': `Bearer ${accessToken}`
                         },
                         body: JSON.stringify({ minerAddress: currentGeneratedAddress })
                     });
