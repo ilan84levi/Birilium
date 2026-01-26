@@ -49,13 +49,18 @@ const P2P_TLS_REQUIRE_CLIENT_CERT = process.env.P2P_TLS_REQUIRE_CLIENT_CERT === 
 const P2P_TLS_CA_CERT = process.env.P2P_TLS_CA_CERT || path.join(__dirname, 'certs', 'ca-cert.pem');
 const MAX_PEERS = parseInt(process.env.MAX_PEERS) || 32;
 
-// Rate limiting
+// Rate limiting - more generous for local wallet connections
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 300, // 300 requests per minute (5 per second)
     message: { error: 'Too many requests from this IP, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+        // Skip rate limiting for localhost connections (local wallet)
+        const ip = req.ip || req.connection.remoteAddress;
+        return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    },
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -2003,8 +2008,8 @@ const handleNewBlock = (blockData, peerId) => {
 
                 // Save to database
                 if (database && database.isConnected) {
-                    database.saveBlock(block).catch(err => {
-                        console.error('Failed to save new block:', err.message);
+                    database.saveBlock(block, block.index).catch(err => {
+                        console.error('Error saving block:', err.message);
                     });
                 }
             } else {
