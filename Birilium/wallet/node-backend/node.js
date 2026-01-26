@@ -800,6 +800,41 @@ app.get('/api/admin/websocket/status', authenticateAdmin, async (req, res) => {
     });
 });
 
+// ========== ADMIN WALLET GENERATION ENDPOINT ==========
+
+// Admin-only wallet generation endpoint
+app.post('/api/admin/generate-wallet', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_GENERATE_WALLET'), async (req, res) => {
+    try {
+        const crypto = require('crypto');
+
+        // Generate a random 32-byte private key
+        const privateKeyBytes = crypto.randomBytes(32);
+        const privateKey = bytesToHex(privateKeyBytes);
+
+        // Derive the public key from the private key
+        const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false); // uncompressed
+        const publicKey = bytesToHex(publicKeyBytes);
+
+        res.json({
+            success: true,
+            wallet: {
+                address: publicKey,
+                privateKey: privateKey
+            },
+            message: 'Wallet generated successfully. IMPORTANT: Save the private key securely!'
+        });
+
+        console.log(`[Admin] New wallet generated: ${publicKey.substring(0, 20)}...`);
+
+    } catch (error) {
+        console.error('Wallet generation error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to generate wallet: ' + error.message
+        });
+    }
+});
+
 // ========== ADMIN MINING ENDPOINT (NO SUBSCRIPTION REQUIRED) ==========
 
 // Admin-only mining endpoint - bypasses subscription checks
