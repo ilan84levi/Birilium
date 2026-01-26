@@ -1963,12 +1963,54 @@ const handleNewTransaction = (transaction, peerId) => {
     }
 };
 
-const handleNewBlock = (block, peerId) => {
+const handleNewBlock = (blockData, peerId) => {
     try {
+        const Block = require('./Block');
+        const Transaction = require('./Transaction');
+
+        // Convert transactions to Transaction instances
+        const transactions = (blockData.transactions || []).map(txData => {
+            const tx = new Transaction(
+                txData.fromAddress,
+                txData.toAddress,
+                txData.amount,
+                txData.fee || 0
+            );
+            tx.timestamp = txData.timestamp;
+            tx.signature = txData.signature;
+            tx.nonce = txData.nonce || 0;
+            return tx;
+        });
+
+        // Create Block instance
+        const block = new Block(
+            blockData.timestamp,
+            transactions,
+            blockData.previousHash,
+            blockData.index !== undefined ? blockData.index : biriliumChain.chain.length
+        );
+        block.hash = blockData.hash;
+        block.nonce = blockData.nonce;
+
         const latestBlock = biriliumChain.getLatestBlock();
         if (block.previousHash === latestBlock.hash && block.timestamp > latestBlock.timestamp) {
-            biriliumChain.chain.push(block);
-            console.log('[P2P] New block added to chain');
+            // Verify the block hash is valid
+            if (block.hash === block.calculateHash()) {
+                biriliumChain.chain.push(block);
+                biriliumChain.balanceCacheDirty = true;
+                biriliumChain.noncesCacheDirty = true;
+                console.log(`[P2P] New block #${block.index} added to chain`);
+
+                // Save to database
+                if (database && database.isConnected) {
+                    database.saveBlock(block).catch(err => {
+                        console.error('Failed to save new block:', err.message);
+                    });
+                }
+            } else {
+                console.warn(`[P2P] Block hash mismatch from ${peerId.substring(0, 16)}...`);
+                peerManager.incrementBanScore(peerId, 10);
+            }
         } else {
             console.warn(`[P2P] Invalid block from ${peerId.substring(0, 16)}...`);
             peerManager.incrementBanScore(peerId, 5);
@@ -1980,16 +2022,60 @@ const handleNewBlock = (block, peerId) => {
 };
 
 const replaceChain = (newBlocks) => {
+    // Convert plain objects to Block instances
+    const Block = require('./Block');
+    const Transaction = require('./Transaction');
+
+    const convertedBlocks = newBlocks.map((blockData, idx) => {
+        // Convert transactions to Transaction instances
+        const transactions = (blockData.transactions || []).map(txData => {
+            const tx = new Transaction(
+                txData.fromAddress,
+                txData.toAddress,
+                txData.amount,
+                txData.fee || 0
+            );
+            tx.timestamp = txData.timestamp;
+            tx.signature = txData.signature;
+            tx.nonce = txData.nonce || 0;
+            return tx;
+        });
+
+        // Create Block instance
+        const block = new Block(
+            blockData.timestamp,
+            transactions,
+            blockData.previousHash,
+            blockData.index !== undefined ? blockData.index : idx
+        );
+        block.hash = blockData.hash;
+        block.nonce = blockData.nonce;
+        return block;
+    });
+
     // Validate new chain
     const tempChain = Object.assign(Object.create(Object.getPrototypeOf(biriliumChain)), biriliumChain);
-    tempChain.chain = newBlocks;
+    tempChain.chain = convertedBlocks;
 
-    if (tempChain.isChainValid() && newBlocks.length > biriliumChain.chain.length) {
+    if (tempChain.isChainValid() && convertedBlocks.length > biriliumChain.chain.length) {
         console.log('Replacing chain with new longer valid chain');
-        biriliumChain.chain = newBlocks;
+        biriliumChain.chain = convertedBlocks;
+
+        // Rebuild caches after chain replacement
+        biriliumChain.balanceCacheDirty = true;
+        biriliumChain.noncesCacheDirty = true;
+
+        // Save to database
+        if (database && database.isConnected) {
+            database.saveBlockchain(convertedBlocks).catch(err => {
+                console.error('Failed to save synced blockchain:', err.message);
+            });
+        }
+
         broadcast(responseLatestMsg());
+        console.log(`✓ Blockchain synced: ${convertedBlocks.length} blocks`);
     } else {
-        console.log('Received invalid chain');
+        console.log('Received invalid chain - validation failed');
     }
 };
 
