@@ -2003,39 +2003,66 @@ const handleNewTransaction = (transaction, peerId) => {
     }
 };
 
+// Orphan block pool for handling forks
+const orphanBlocks = new Map(); // hash -> block
+
+const convertBlockData = (blockData) => {
+    const Block = require('./Block');
+    const Transaction = require('./Transaction');
+
+    const transactions = (blockData.transactions || []).map(txData => {
+        const tx = new Transaction(
+            txData.fromAddress,
+            txData.toAddress,
+            txData.amount,
+            txData.fee || 0
+        );
+        tx.timestamp = txData.timestamp;
+        tx.signature = txData.signature;
+        tx.nonce = txData.nonce || 0;
+        return tx;
+    });
+
+    const block = new Block(
+        blockData.timestamp,
+        transactions,
+        blockData.previousHash,
+        blockData.index
+    );
+    block.hash = blockData.hash;
+    block.nonce = blockData.nonce;
+    return block;
+};
+
+const isValidBlock = (block, previousBlock) => {
+    // Check index
+    if (previousBlock.index + 1 !== block.index) {
+        return false;
+    }
+    // Check previous hash link
+    if (previousBlock.hash !== block.previousHash) {
+        return false;
+    }
+    // Check block hash is correct
+    if (block.hash !== block.calculateHash()) {
+        return false;
+    }
+    // Check proof of work
+    const difficulty = biriliumChain.difficulty || 4;
+    if (!block.hash.startsWith('0'.repeat(difficulty))) {
+        return false;
+    }
+    return true;
+};
+
 const handleNewBlock = (blockData, peerId) => {
     try {
-        const Block = require('./Block');
-        const Transaction = require('./Transaction');
-
-        // Convert transactions to Transaction instances
-        const transactions = (blockData.transactions || []).map(txData => {
-            const tx = new Transaction(
-                txData.fromAddress,
-                txData.toAddress,
-                txData.amount,
-                txData.fee || 0
-            );
-            tx.timestamp = txData.timestamp;
-            tx.signature = txData.signature;
-            tx.nonce = txData.nonce || 0;
-            return tx;
-        });
-
-        // Create Block instance
-        const block = new Block(
-            blockData.timestamp,
-            transactions,
-            blockData.previousHash,
-            blockData.index !== undefined ? blockData.index : biriliumChain.chain.length
-        );
-        block.hash = blockData.hash;
-        block.nonce = blockData.nonce;
-
+        const block = convertBlockData(blockData);
         const latestBlock = biriliumChain.getLatestBlock();
-        if (block.previousHash === latestBlock.hash && block.timestamp > latestBlock.timestamp) {
-            // Verify the block hash is valid
-            if (block.hash === block.calculateHash()) {
+
+        // Case 1: Block extends our current chain directly
+        if (block.previousHash === latestBlock.hash && block.index === latestBlock.index + 1) {
+            if (isValidBlock(block, latestBlock)) {
                 biriliumChain.chain.push(block);
                 biriliumChain.balanceCacheDirty = true;
                 biriliumChain.noncesCacheDirty = true;
@@ -2047,90 +2074,197 @@ const handleNewBlock = (blockData, peerId) => {
                         console.error('Error saving block:', err.message);
                     });
                 }
+
+                // Broadcast to other peers
+                broadcast(responseNewBlockMsg(block));
+
+                // Check if any orphan blocks can now be connected
+                processOrphanBlocks();
             } else {
-                console.warn(`[P2P] Block hash mismatch from ${peerId.substring(0, 16)}...`);
-                peerManager.incrementBanScore(peerId, 10);
+                console.warn(`[P2P] Invalid block from ${peerId.substring(0, 16)}...`);
             }
-        } else {
-            console.warn(`[P2P] Invalid block from ${peerId.substring(0, 16)}...`);
-            peerManager.incrementBanScore(peerId, 5);
+            return;
         }
+
+        // Case 2: Block is ahead of us - we need to sync
+        if (block.index > latestBlock.index + 1) {
+            console.log(`[P2P] Block #${block.index} is ahead of our chain (we have #${latestBlock.index}). Requesting full chain.`);
+            // Store as orphan and request full chain
+            orphanBlocks.set(block.hash, block);
+            // Request the full chain from this peer
+            const peer = peerManager.getAllPeers().find(p => p.peerId === peerId);
+            if (peer) {
+                write(peer.ws, queryAllMsg());
+            }
+            return;
+        }
+
+        // Case 3: Competing block at same height (fork) or extends different branch
+        if (block.index <= latestBlock.index) {
+            // Check if this block could be part of a longer chain
+            // Store it as orphan - it might become relevant if we receive a longer chain
+            if (!orphanBlocks.has(block.hash)) {
+                orphanBlocks.set(block.hash, block);
+                console.log(`[P2P] Stored competing block #${block.index} as orphan (fork candidate)`);
+
+                // If this block is at our chain tip height, request full chain to check if peer has longer chain
+                if (block.index === latestBlock.index) {
+                    const peer = peerManager.getAllPeers().find(p => p.peerId === peerId);
+                    if (peer) {
+                        write(peer.ws, queryAllMsg());
+                    }
+                }
+            }
+            return;
+        }
+
     } catch (error) {
         console.error(`[P2P] Block handling error: ${error.message}`);
-        peerManager.incrementBanScore(peerId, 5);
+    }
+};
+
+const processOrphanBlocks = () => {
+    // Try to connect orphan blocks to our chain
+    let connected = true;
+    while (connected && orphanBlocks.size > 0) {
+        connected = false;
+        const latestBlock = biriliumChain.getLatestBlock();
+
+        for (const [hash, block] of orphanBlocks) {
+            if (block.previousHash === latestBlock.hash && block.index === latestBlock.index + 1) {
+                if (isValidBlock(block, latestBlock)) {
+                    biriliumChain.chain.push(block);
+                    biriliumChain.balanceCacheDirty = true;
+                    biriliumChain.noncesCacheDirty = true;
+                    orphanBlocks.delete(hash);
+                    console.log(`[P2P] Connected orphan block #${block.index} to chain`);
+
+                    if (database && database.isConnected) {
+                        database.saveBlock(block, block.index).catch(err => {
+                            console.error('Error saving block:', err.message);
+                        });
+                    }
+                    connected = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Clean up old orphans (keep only last 100)
+    if (orphanBlocks.size > 100) {
+        const toDelete = orphanBlocks.size - 100;
+        let deleted = 0;
+        for (const hash of orphanBlocks.keys()) {
+            if (deleted >= toDelete) break;
+            orphanBlocks.delete(hash);
+            deleted++;
+        }
     }
 };
 
 const replaceChain = (newBlocks) => {
-    // Debug: log received genesis block
+    // Debug: log received chain info
     if (newBlocks.length > 1) {
         console.log('[P2P Sync] Received chain with', newBlocks.length, 'blocks');
-        console.log('[P2P Sync] Genesis block hash:', newBlocks[0].hash);
-        console.log('[P2P Sync] Block 1 previousHash:', newBlocks[1].previousHash);
     }
 
     // Convert plain objects to Block instances
-    const Block = require('./Block');
-    const Transaction = require('./Transaction');
-
     const convertedBlocks = newBlocks.map((blockData, idx) => {
-        // Convert transactions to Transaction instances
-        const transactions = (blockData.transactions || []).map(txData => {
-            const tx = new Transaction(
-                txData.fromAddress,
-                txData.toAddress,
-                txData.amount,
-                txData.fee || 0
-            );
-            tx.timestamp = txData.timestamp;
-            tx.signature = txData.signature;
-            tx.nonce = txData.nonce || 0;
-            return tx;
+        return convertBlockData({
+            ...blockData,
+            index: blockData.index !== undefined ? blockData.index : idx
         });
-
-        // Create Block instance
-        const block = new Block(
-            blockData.timestamp,
-            transactions,
-            blockData.previousHash,
-            blockData.index !== undefined ? blockData.index : idx
-        );
-        block.hash = blockData.hash;
-        block.nonce = blockData.nonce;
-        return block;
     });
+
+    // Validate genesis block matches ours
+    const ourGenesis = biriliumChain.chain[0];
+    const theirGenesis = convertedBlocks[0];
+
+    if (ourGenesis.hash !== theirGenesis.hash) {
+        console.log('[P2P Sync] Genesis block mismatch - different networks');
+        console.log(`  Our genesis: ${ourGenesis.hash}`);
+        console.log(`  Their genesis: ${theirGenesis.hash}`);
+        return;
+    }
 
     // Validate new chain
     const tempChain = Object.assign(Object.create(Object.getPrototypeOf(biriliumChain)), biriliumChain);
     tempChain.chain = convertedBlocks;
 
-    if (tempChain.isChainValid() && convertedBlocks.length > biriliumChain.chain.length) {
-        console.log('Replacing chain with new longer valid chain');
-        biriliumChain.chain = convertedBlocks;
-
-        // Rebuild caches after chain replacement
-        biriliumChain.balanceCacheDirty = true;
-        biriliumChain.noncesCacheDirty = true;
-
-        // Save all blocks to database
-        if (database && database.isConnected) {
-            (async () => {
-                for (const block of convertedBlocks) {
-                    try {
-                        await database.saveBlock(block, block.index);
-                    } catch (err) {
-                        console.error(`Failed to save block ${block.index}:`, err.message);
-                    }
-                }
-                console.log(`✓ Saved ${convertedBlocks.length} blocks to database`);
-            })();
-        }
-
-        broadcast(responseLatestMsg());
-        console.log(`✓ Blockchain synced: ${convertedBlocks.length} blocks`);
-    } else {
-        console.log('Received invalid chain - validation failed');
+    if (!tempChain.isChainValid()) {
+        console.log('[P2P Sync] Received invalid chain - validation failed');
+        return;
     }
+
+    // Only replace if new chain is longer (longest chain rule)
+    if (convertedBlocks.length <= biriliumChain.chain.length) {
+        console.log(`[P2P Sync] Received chain is not longer (theirs: ${convertedBlocks.length}, ours: ${biriliumChain.chain.length})`);
+        return;
+    }
+
+    // Find the fork point (where chains diverge)
+    let forkPoint = 0;
+    for (let i = 0; i < Math.min(biriliumChain.chain.length, convertedBlocks.length); i++) {
+        if (biriliumChain.chain[i].hash === convertedBlocks[i].hash) {
+            forkPoint = i;
+        } else {
+            break;
+        }
+    }
+
+    const blocksToReplace = biriliumChain.chain.length - forkPoint - 1;
+    const blocksToAdd = convertedBlocks.length - forkPoint - 1;
+
+    console.log(`[P2P Sync] Chain reorganization: removing ${blocksToReplace} blocks, adding ${blocksToAdd} blocks (fork at #${forkPoint})`);
+
+    // Store old chain tip for potential orphan reprocessing
+    const oldChain = biriliumChain.chain.slice();
+
+    // Replace the chain
+    biriliumChain.chain = convertedBlocks;
+
+    // Rebuild caches after chain replacement
+    biriliumChain.balanceCacheDirty = true;
+    biriliumChain.noncesCacheDirty = true;
+
+    // Save new blocks to database (only blocks after fork point)
+    if (database && database.isConnected) {
+        (async () => {
+            // Save only the new/changed blocks
+            for (let i = forkPoint; i < convertedBlocks.length; i++) {
+                try {
+                    await database.saveBlock(convertedBlocks[i], convertedBlocks[i].index);
+                } catch (err) {
+                    console.error(`Failed to save block ${i}:`, err.message);
+                }
+            }
+            console.log(`✓ Saved ${convertedBlocks.length - forkPoint} blocks to database`);
+        })();
+    }
+
+    // Re-add orphaned transactions back to mempool
+    // Transactions from old chain blocks (after fork point) that aren't in new chain
+    for (let i = forkPoint + 1; i < oldChain.length; i++) {
+        const oldBlock = oldChain[i];
+        for (const tx of oldBlock.transactions) {
+            // Check if transaction exists in new chain
+            const existsInNewChain = convertedBlocks.some(block =>
+                block.transactions.some(newTx => newTx.signature === tx.signature)
+            );
+            if (!existsInNewChain && tx.fromAddress) { // Don't re-add coinbase transactions
+                try {
+                    biriliumChain.addTransaction(tx);
+                    console.log(`[P2P Sync] Re-added orphaned transaction to mempool`);
+                } catch (e) {
+                    // Transaction might be invalid now, ignore
+                }
+            }
+        }
+    }
+
+    broadcast(responseLatestMsg());
+    console.log(`✓ Blockchain synced: ${convertedBlocks.length} blocks (reorg from #${forkPoint})`);
 };
 
 // Message creators
