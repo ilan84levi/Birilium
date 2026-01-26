@@ -1339,7 +1339,7 @@
             errorDiv.textContent = '';
 
             try {
-                const response = await fetch(`${API_BASE}/admin/auth/login`, {
+                const response = await fetch(`${API_BASE}/api/admin/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
@@ -1651,7 +1651,7 @@
             mineBtnText.textContent = 'Mining...';
 
             try {
-                const response = await fetch(`${API_BASE}/admin/mine`, {
+                const response = await fetch(`${API_BASE}/api/admin/mine`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
@@ -1747,7 +1747,7 @@
 
         async function autoMineOnce(minerAddress) {
             try {
-                const response = await fetch(`${API_BASE}/admin/mine`, {
+                const response = await fetch(`${API_BASE}/api/admin/mine`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
