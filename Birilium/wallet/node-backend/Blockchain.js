@@ -506,21 +506,28 @@ class Blockchain {
 
             // Validate transactions
             if (!currentBlock.hasValidTransactions()) {
+                console.log(`[Validation] Block ${i}: Invalid transactions`);
                 return false;
             }
 
             // Validate hash
-            if (currentBlock.hash !== currentBlock.calculateHash()) {
+            const calculatedHash = currentBlock.calculateHash();
+            if (currentBlock.hash !== calculatedHash) {
+                console.log(`[Validation] Block ${i}: Hash mismatch`);
+                console.log(`  Stored: ${currentBlock.hash}`);
+                console.log(`  Calculated: ${calculatedHash}`);
                 return false;
             }
 
             // Validate chain link
             if (currentBlock.previousHash !== previousBlock.hash) {
+                console.log(`[Validation] Block ${i}: Chain link broken`);
                 return false;
             }
 
             // Validate proof of work
             if (currentBlock.hash.substring(0, this.difficulty) !== Array(this.difficulty + 1).join('0')) {
+                console.log(`[Validation] Block ${i}: Invalid proof of work`);
                 return false;
             }
         }
