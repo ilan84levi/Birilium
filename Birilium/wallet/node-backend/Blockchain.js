@@ -94,7 +94,10 @@ class Blockchain {
     }
 
     createGenesisBlock() {
-        const genesisBlock = new Block(Date.now(), [], '0', 0);  // Index 0 for genesis
+        // IMPORTANT: Use fixed timestamp for deterministic genesis block hash
+        // This ensures all nodes have the same genesis block
+        const GENESIS_TIMESTAMP = 1704067200000; // Jan 1, 2024 00:00:00 UTC
+        const genesisBlock = new Block(GENESIS_TIMESTAMP, [], '0', 0);  // Index 0 for genesis
         genesisBlock.hash = genesisBlock.calculateHash();
         return genesisBlock;
     }
