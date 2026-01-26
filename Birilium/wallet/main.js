@@ -139,6 +139,8 @@ function startBlockchainNode() {
         ...envVars, // Load from .env file
         HTTP_PORT: envVars.HTTP_PORT || process.env.HTTP_PORT || '3001',
         P2P_PORT: envVars.P2P_PORT || process.env.P2P_PORT || '6001',
+        // Bootstrap peer - connect to main server for blockchain sync
+        PEERS: envVars.PEERS || process.env.PEERS || 'ws://159.65.96.82:6001',
         API_KEY: envVars.API_KEY || process.env.API_KEY || '',
         NODE_ENV: process.env.NODE_ENV || 'production',
         // Writable paths for packaged app
