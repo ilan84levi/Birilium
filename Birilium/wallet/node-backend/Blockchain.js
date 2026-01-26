@@ -522,6 +522,8 @@ class Blockchain {
             // Validate chain link
             if (currentBlock.previousHash !== previousBlock.hash) {
                 console.log(`[Validation] Block ${i}: Chain link broken`);
+                console.log(`  Block ${i} previousHash: ${currentBlock.previousHash}`);
+                console.log(`  Block ${i-1} hash: ${previousBlock.hash}`);
                 return false;
             }
 

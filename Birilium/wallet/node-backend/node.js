@@ -2022,6 +2022,13 @@ const handleNewBlock = (blockData, peerId) => {
 };
 
 const replaceChain = (newBlocks) => {
+    // Debug: log received genesis block
+    if (newBlocks.length > 1) {
+        console.log('[P2P Sync] Received chain with', newBlocks.length, 'blocks');
+        console.log('[P2P Sync] Genesis block hash:', newBlocks[0].hash);
+        console.log('[P2P Sync] Block 1 previousHash:', newBlocks[1].previousHash);
+    }
+
     // Convert plain objects to Block instances
     const Block = require('./Block');
     const Transaction = require('./Transaction');
