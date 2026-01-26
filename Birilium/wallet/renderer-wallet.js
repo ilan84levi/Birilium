@@ -131,7 +131,7 @@ class BiriliumBlockchainWallet {
         indicator.id = 'connectionMode';
         indicator.style.cssText = `
             position: fixed;
-            bottom: 10px;
+            bottom: 70px;
             left: 10px;
             padding: 5px 10px;
             border-radius: 5px;
