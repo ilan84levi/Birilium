@@ -5,15 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      sign_and_notarize:
-        description: 'Sign and notarize the app'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   build-macos:
@@ -38,59 +29,31 @@ jobs:
         working-directory: Birilium/wallet/node-backend
         run: npm ci
 
-      - name: Build macOS (unsigned)
-        if: github.event.inputs.sign_and_notarize != 'true' && !startsWith(github.ref, 'refs/tags/')
+      - name: Build macOS (Apple Silicon)
         working-directory: Birilium/wallet
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run build:mac
+        run: npm run build:mac:arm64
 
-      - name: Import Code Signing Certificate
-        if: github.event.inputs.sign_and_notarize == 'true' || startsWith(github.ref, 'refs/tags/')
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          # Create a temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Import certificate
-          echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
-          security import certificate.p12 -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # Allow codesign to access the key
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Clean up
-          rm certificate.p12
-
-      - name: Build macOS (signed + notarized)
-        if: github.event.inputs.sign_and_notarize == 'true' || startsWith(github.ref, 'refs/tags/')
+      - name: Build macOS (Intel)
         working-directory: Birilium/wallet
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run build:mac
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run build:mac:x64
 
-      - name: Upload DMG artifact
+      - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Birilium-Wallet-macOS-dmg
+          name: Birilium-Wallet-macOS
           path: Birilium/wallet/dist/*.dmg
-          retention-days: 30
+          retention-days: 90
 
-      - name: Upload ZIP artifact
+      - name: Upload ZIP artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-macOS-zip
           path: Birilium/wallet/dist/*.zip
-          retention-days: 30
+          retention-days: 90
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -99,42 +62,7 @@ jobs:
           files: |
             Birilium/wallet/dist/*.dmg
             Birilium/wallet/dist/*.zip
+          draft: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-macos-intel:
-    runs-on: macos-13
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Birilium/wallet/package-lock.json
-
-      - name: Install main dependencies
-        working-directory: Birilium/wallet
-        run: npm ci
-
-      - name: Install backend dependencies
-        working-directory: Birilium/wallet/node-backend
-        run: npm ci
-
-      - name: Build macOS Intel (unsigned)
-        working-directory: Birilium/wallet
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: |
-          # Build only for x64 on Intel runner for compatibility
-          npx electron-builder --mac --x64
-
-      - name: Upload Intel DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Birilium-Wallet-macOS-Intel-dmg
-          path: Birilium/wallet/dist/*-x64.dmg
-          retention-days: 30
