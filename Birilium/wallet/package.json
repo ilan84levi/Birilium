@@ -32,7 +32,7 @@
     "productName": "Birilium Wallet",
     "copyright": "Copyright © 2025 Birilium Team",
     "directories": {
-      "output": "dist",
+      "output": "distribution",
       "buildResources": "build"
     },
     "files": [
@@ -68,7 +68,13 @@
           "**/*",
           "!data/**",
           "!logs/**",
-          "!**/*.log"
+          "!**/*.log",
+          "!.env",
+          "!.env.*",
+          "!*.env",
+          "!certs/**",
+          "!**/*.pem",
+          "!**/*.key"
         ]
       }
     ],

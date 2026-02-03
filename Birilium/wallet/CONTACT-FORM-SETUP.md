@@ -45,7 +45,7 @@ Edit your `.env` file in `Birilium/wallet/node-backend/.env`:
 ```bash
 # Contact Form Email Configuration
 CONTACT_EMAIL=biriliumcoin@gmail.com
-CONTACT_EMAIL_PASSWORD=REDACTED_EMAIL_PASSWORD
+CONTACT_EMAIL_PASSWORD=your-gmail-app-password-here
 ```
 
 **Important**: Use the App Password, NOT your regular Gmail password!

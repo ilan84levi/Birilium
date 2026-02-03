@@ -16,15 +16,23 @@ secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
 class BiriliumBlockchainWallet {
     constructor() {
-        // Primary: Local node (P2P decentralized)
-        // Fallback: Production server (centralized)
-        this.localNodeUrl = 'http://localhost:3001';
-        this.serverUrl = 'https://api.birilium.com';
-        this.nodeUrl = this.localNodeUrl; // Start with local, will fallback if needed
-        this.usingLocalNode = true;
+        // List of known nodes (local first, then public nodes)
+        // Add more public nodes here as the network grows
+        this.knownNodes = [
+            { url: 'http://localhost:3001', name: 'Local Node', priority: 1 },
+            { url: 'https://api.birilium.com', name: 'Main Server', priority: 2 }
+            // Future nodes can be added here:
+            // { url: 'https://node2.birilium.com', name: 'Node 2', priority: 3 },
+            // { url: 'https://node3.birilium.com', name: 'Node 3', priority: 4 },
+        ];
+
+        this.nodeUrl = this.knownNodes[0].url; // Start with first node
+        this.connectedNodeName = this.knownNodes[0].name;
+        this.connectedNodeIndex = 0;
         this.walletAddress = null;
         this.privateKey = null;
         this.balance = 0;
+        this.chainLength = 0;
         this.transactions = [];
         this.isMining = false;
         this.miningInterval = null;
@@ -36,6 +44,12 @@ class BiriliumBlockchainWallet {
         this.isNodeConnected = false;
         this.nodeConnectionRetries = 0;
         this.maxRetries = 10;
+
+        // Decentralized mining state
+        this.miningWorker = null;
+        this.currentHashrate = 0;
+        this.totalHashCount = 0;
+        this.miningStartTime = 0;
 
         // Check if terms were accepted
         this.checkTermsAcceptance();
@@ -53,8 +67,9 @@ class BiriliumBlockchainWallet {
     // Wait for node connection with retry logic
     async waitForNodeConnection() {
         console.log('Waiting for blockchain node connection...');
+        console.log(`Known nodes: ${this.knownNodes.map(n => n.name).join(', ')}`);
 
-        // Try to connect to a node (local first, then server fallback)
+        // Try to connect to a node
         const tryConnect = async (url, name) => {
             try {
                 const response = await fetch(`${url}/api/stats`, {
@@ -71,36 +86,28 @@ class BiriliumBlockchainWallet {
         };
 
         const checkConnection = async () => {
-            // Try local node first (decentralized P2P mode)
-            if (this.nodeConnectionRetries < 3) {
-                console.log(`Trying local node (attempt ${this.nodeConnectionRetries + 1}/3)...`);
-                if (await tryConnect(this.localNodeUrl, 'Local node')) {
-                    this.nodeUrl = this.localNodeUrl;
-                    this.usingLocalNode = true;
+            // Try each node in order of priority
+            for (let i = 0; i < this.knownNodes.length; i++) {
+                const node = this.knownNodes[i];
+                console.log(`Trying ${node.name} (${node.url})...`);
+
+                if (await tryConnect(node.url, node.name)) {
+                    this.nodeUrl = node.url;
+                    this.connectedNodeName = node.name;
+                    this.connectedNodeIndex = i;
                     this.isNodeConnected = true;
-                    console.log('✓ Connected to LOCAL node (P2P decentralized mode)');
+                    console.log(`✓ Connected to ${node.name}`);
                     this.onNodeConnected();
                     return;
                 }
             }
 
-            // Try server fallback (centralized mode)
-            if (this.nodeConnectionRetries >= 3 && this.nodeConnectionRetries < 5) {
-                console.log(`Trying server fallback (attempt ${this.nodeConnectionRetries - 2}/2)...`);
-                if (await tryConnect(this.serverUrl, 'Server')) {
-                    this.nodeUrl = this.serverUrl;
-                    this.usingLocalNode = false;
-                    this.isNodeConnected = true;
-                    console.log('✓ Connected to SERVER (centralized fallback mode)');
-                    this.onNodeConnected();
-                    return;
-                }
-            }
-
+            // No nodes available, retry after delay
             this.nodeConnectionRetries++;
 
             if (this.nodeConnectionRetries < 5) {
-                setTimeout(checkConnection, 2000);
+                console.log(`Retrying in 3 seconds (attempt ${this.nodeConnectionRetries}/5)...`);
+                setTimeout(checkConnection, 3000);
             } else {
                 console.warn('⚠️ Could not connect to any node');
                 this.showNodeConnectionWarning();
@@ -127,6 +134,7 @@ class BiriliumBlockchainWallet {
         const existing = document.getElementById('connectionMode');
         if (existing) existing.remove();
 
+        const isLocal = this.connectedNodeIndex === 0;
         const indicator = document.createElement('div');
         indicator.id = 'connectionMode';
         indicator.style.cssText = `
@@ -137,11 +145,61 @@ class BiriliumBlockchainWallet {
             border-radius: 5px;
             font-size: 11px;
             z-index: 1000;
-            background: ${this.usingLocalNode ? '#27ae60' : '#3498db'};
+            background: ${isLocal ? '#27ae60' : '#3498db'};
             color: white;
+            cursor: pointer;
         `;
-        indicator.textContent = this.usingLocalNode ? '🔗 P2P Mode (Local Node)' : '☁️ Server Mode';
+        indicator.title = `Connected to: ${this.nodeUrl}`;
+        const chainInfo = this.chainLength ? ` | ${this.chainLength} blocks` : '';
+        const icon = isLocal ? '🔗' : '☁️';
+        indicator.textContent = `${icon} ${this.connectedNodeName}${chainInfo}`;
         document.body.appendChild(indicator);
+    }
+
+    // Update connection mode indicator
+    updateConnectionIndicator() {
+        const indicator = document.getElementById('connectionMode');
+        if (indicator) {
+            const isLocal = this.connectedNodeIndex === 0;
+            const chainInfo = this.chainLength ? ` | ${this.chainLength} blocks` : '';
+            const icon = isLocal ? '🔗' : '☁️';
+            indicator.textContent = `${icon} ${this.connectedNodeName}${chainInfo}`;
+        }
+    }
+
+    // Try to switch to next available node
+    async switchToNextNode() {
+        const startIndex = this.connectedNodeIndex;
+
+        for (let i = 1; i <= this.knownNodes.length; i++) {
+            const nextIndex = (startIndex + i) % this.knownNodes.length;
+            const node = this.knownNodes[nextIndex];
+
+            console.log(`Trying to switch to ${node.name}...`);
+
+            try {
+                const response = await fetch(`${node.url}/api/stats`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(5000)
+                });
+
+                if (response.ok) {
+                    this.nodeUrl = node.url;
+                    this.connectedNodeName = node.name;
+                    this.connectedNodeIndex = nextIndex;
+                    this.isNodeConnected = true;
+                    console.log(`✓ Switched to ${node.name}`);
+                    this.showConnectionMode();
+                    return true;
+                }
+            } catch (error) {
+                console.log(`${node.name} not available:`, error.message);
+            }
+        }
+
+        console.warn('No available nodes found');
+        this.isNodeConnected = false;
+        return false;
     }
 
     // Show warning when node is not connected
@@ -562,10 +620,16 @@ class BiriliumBlockchainWallet {
 
         try {
             // Get balance
-            const balanceResponse = await fetch(`${this.nodeUrl}/api/balance/${this.walletAddress}`);
+            const balanceResponse = await fetch(`${this.nodeUrl}/api/balance/${this.walletAddress}`, {
+                signal: AbortSignal.timeout(10000)
+            });
             if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json();
                 this.balance = balanceData.balance;
+                this.chainLength = balanceData.chainLength || 0;
+
+                // Log sync info for debugging
+                console.log(`[Sync] Balance: ${this.balance} BRL, Chain: ${this.chainLength} blocks, Node: ${this.connectedNodeName}`);
 
                 // Get transactions
                 const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
@@ -578,6 +642,12 @@ class BiriliumBlockchainWallet {
             }
         } catch (error) {
             console.error('Error syncing with blockchain:', error);
+            // Try switching to another node
+            console.log('Attempting to switch to another node...');
+            if (await this.switchToNextNode()) {
+                // Retry sync with new node
+                await this.syncWithBlockchain();
+            }
         }
     }
 
@@ -620,7 +690,7 @@ class BiriliumBlockchainWallet {
         }
     }
 
-    // Start real mining
+    // Start decentralized mining (client-side proof-of-work)
     async startMining() {
         if (this.isMining) return;
 
@@ -635,18 +705,16 @@ class BiriliumBlockchainWallet {
         }
 
         // ADMIN BYPASS: Check localStorage flag (must be set via developer console)
-        // For security: No hardcoded credentials in client code
         const isAdmin = localStorage.getItem('biriliumAdminMode') === 'true';
 
         if (isAdmin) {
             console.log('[ADMIN MODE] Unlimited mining enabled');
-            this.hasSubscription = true;  // Grant premium access
+            this.hasSubscription = true;
         }
 
-        // Check free mining limit for non-premium users - FETCH REAL-TIME DATA
+        // Check free mining limit for non-premium users
         if (!this.hasSubscription && !isAdmin) {
             try {
-                // Fetch current transactions from blockchain (not cached)
                 const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
                 if (txResponse.ok) {
                     const transactions = await txResponse.json();
@@ -664,94 +732,186 @@ class BiriliumBlockchainWallet {
                 }
             } catch (error) {
                 console.error('Error checking mining limit:', error);
-                // Continue anyway if check fails
             }
         }
 
-        // Test connection to node first
+        // Test connection to node
         try {
             const response = await fetch(`${this.nodeUrl}/api/stats`);
             if (!response.ok) {
                 throw new Error('Cannot connect to blockchain node');
             }
         } catch (error) {
-            alert('Cannot connect to blockchain node!\n\nMake sure the node is running:\n1. Open terminal\n2. cd birilium-coin\n3. node node.js');
+            alert('Cannot connect to blockchain node!\n\nMake sure the node is running.');
             return;
         }
 
         this.isMining = true;
-        this.addMiningLog('Mining started...');
-        this.addMiningLog('Connected to Birilium blockchain network');
+        this.miningStartTime = Date.now();
+        this.totalHashCount = 0;
+        this.currentHashrate = 0;
+        this.addMiningLog('Decentralized mining started...');
+        this.addMiningLog('Mining locally on your computer');
         this.updateMiningUI();
 
-        const mineBlock = async () => {
-            if (!this.isMining) return;
+        // Start the mining loop
+        this.mineLoop();
+    }
 
-            // Check limit during mining for free users - FETCH REAL-TIME DATA
-            if (!this.hasSubscription) {
-                try {
-                    // Fetch current transactions from blockchain (not cached)
-                    const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
-                    if (txResponse.ok) {
-                        const transactions = await txResponse.json();
-                        let totalMined = 0;
-                        transactions.forEach(tx => {
-                            if (tx.toAddress === this.walletAddress && tx.fromAddress === null) {
-                                totalMined += tx.amount;
-                            }
-                        });
+    // Main mining loop - gets template, mines locally, submits block
+    async mineLoop() {
+        if (!this.isMining) return;
 
-                        if (totalMined >= 20) {
-                            this.addMiningLog('⚠️ Free mining limit reached (20 BRL)');
-                            this.addMiningLog('Upgrade to Premium to mine unlimited!');
-                            this.stopMining();
-                            alert('Free mining limit reached (20 BRL)!\n\nUpgrade to Premium Mining Subscription to mine unlimited coins.');
-                            return;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error checking mining limit during mining:', error);
-                    // Continue mining if check fails
-                }
-            }
-
+        // Check limit during mining for free users
+        if (!this.hasSubscription) {
             try {
-                this.addMiningLog('Mining new block... (this may take 15-30 seconds)');
+                const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
+                if (txResponse.ok) {
+                    const transactions = await txResponse.json();
+                    let totalMined = 0;
+                    transactions.forEach(tx => {
+                        if (tx.toAddress === this.walletAddress && tx.fromAddress === null) {
+                            totalMined += tx.amount;
+                        }
+                    });
 
-                const response = await fetch(`${this.nodeUrl}/api/mine`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ minerAddress: this.walletAddress })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.addMiningLog(`✓ Block mined successfully!`);
-                    this.addMiningLog(`Reward: ${data.reward} BRL`);
-                    this.addMiningLog(`Block hash: ${data.block.hash.substring(0, 20)}...`);
-                    this.addMiningLog(`Nonce: ${data.block.nonce}`);
-
-                    await this.syncWithBlockchain();
-                } else {
-                    this.addMiningLog(`Mining failed: ${data.error}`);
+                    if (totalMined >= 20) {
+                        this.addMiningLog('Free mining limit reached (20 BRL)');
+                        this.stopMining();
+                        alert('Free mining limit reached (20 BRL)!\n\nUpgrade to Premium Mining Subscription to mine unlimited coins.');
+                        return;
+                    }
                 }
             } catch (error) {
-                this.addMiningLog(`Error: ${error.message}`);
-                console.error('Mining error:', error);
+                console.error('Error checking mining limit:', error);
+            }
+        }
+
+        try {
+            // Get mining template from server
+            this.addMiningLog('Fetching block template...');
+            const templateResponse = await fetch(`${this.nodeUrl}/api/mining/template?minerAddress=${this.walletAddress}`);
+
+            if (!templateResponse.ok) {
+                throw new Error('Failed to get mining template');
             }
 
-            // Mine next block after delay
-            if (this.isMining) {
-                const delay = this.hasSubscription ? 5000 : 10000; // Faster with subscription
-                setTimeout(mineBlock, delay);
-            }
-        };
+            const template = await templateResponse.json();
+            this.addMiningLog(`Mining block #${template.index} (difficulty: ${template.difficulty})`);
 
-        // Start first mining operation
-        mineBlock();
+            // Mine the block locally
+            const result = await this.mineBlockLocally(template);
+
+            if (!this.isMining) return; // Check if stopped during mining
+
+            if (result.success) {
+                // Submit mined block to server
+                this.addMiningLog('Block found! Submitting to network...');
+
+                const submitResponse = await fetch(`${this.nodeUrl}/api/mining/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        block: result.block,
+                        minerAddress: this.walletAddress
+                    })
+                });
+
+                const submitResult = await submitResponse.json();
+
+                if (submitResult.success) {
+                    this.addMiningLog(`Block #${submitResult.blockIndex} mined!`);
+                    this.addMiningLog(`Reward: ${submitResult.reward} BRL`);
+                    this.addMiningLog(`Hash: ${result.block.hash.substring(0, 20)}...`);
+                    this.addMiningLog(`Nonce: ${result.block.nonce} (${result.stats.hashCount.toLocaleString()} hashes)`);
+                    await this.syncWithBlockchain();
+                } else {
+                    this.addMiningLog(`Submit failed: ${submitResult.error}`);
+                    // Small delay before retrying
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        } catch (error) {
+            this.addMiningLog(`Error: ${error.message}`);
+            console.error('Mining error:', error);
+            // Wait before retrying on error
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        // Continue mining loop
+        if (this.isMining) {
+            setTimeout(() => this.mineLoop(), 100);
+        }
+    }
+
+    // Mine a block locally using CPU
+    async mineBlockLocally(template) {
+        return new Promise((resolve) => {
+            const { previousHash, timestamp, transactions, difficulty, index } = template;
+            const target = '0'.repeat(difficulty);
+            let nonce = 0;
+            let hashCount = 0;
+            const startTime = Date.now();
+            const batchSize = 10000;
+
+            const mineBatch = () => {
+                if (!this.isMining) {
+                    resolve({ success: false, reason: 'stopped' });
+                    return;
+                }
+
+                for (let i = 0; i < batchSize; i++) {
+                    const hash = this.calculateBlockHash(previousHash, timestamp, transactions, nonce);
+                    hashCount++;
+
+                    if (hash.startsWith(target)) {
+                        // Found valid hash
+                        const elapsed = Date.now() - startTime;
+                        this.currentHashrate = Math.round(hashCount / (elapsed / 1000));
+                        this.totalHashCount += hashCount;
+
+                        resolve({
+                            success: true,
+                            block: {
+                                index,
+                                timestamp,
+                                transactions,
+                                previousHash,
+                                nonce,
+                                hash
+                            },
+                            stats: {
+                                hashCount,
+                                elapsed,
+                                hashRate: this.currentHashrate
+                            }
+                        });
+                        return;
+                    }
+
+                    nonce++;
+                }
+
+                // Update hashrate display
+                const elapsed = Date.now() - startTime;
+                if (elapsed > 0) {
+                    this.currentHashrate = Math.round(hashCount / (elapsed / 1000));
+                    this.totalHashCount = hashCount;
+                    this.updateMiningUI();
+                }
+
+                // Continue mining (use setTimeout to keep UI responsive)
+                setTimeout(mineBatch, 0);
+            };
+
+            mineBatch();
+        });
+    }
+
+    // Calculate block hash (matches server-side calculation)
+    calculateBlockHash(previousHash, timestamp, transactions, nonce) {
+        const data = previousHash + timestamp + JSON.stringify(transactions) + nonce;
+        return SHA256(data).toString();
     }
 
     // Stop mining
@@ -759,7 +919,14 @@ class BiriliumBlockchainWallet {
         if (!this.isMining) return;
 
         this.isMining = false;
+        this.currentHashrate = 0;
+
+        const totalElapsed = Date.now() - this.miningStartTime;
+        const minutes = Math.floor(totalElapsed / 60000);
+        const seconds = Math.floor((totalElapsed % 60000) / 1000);
+
         this.addMiningLog('Mining stopped.');
+        this.addMiningLog(`Session: ${this.totalHashCount.toLocaleString()} hashes in ${minutes}m ${seconds}s`);
         this.updateMiningUI();
     }
 
@@ -1114,13 +1281,14 @@ class BiriliumBlockchainWallet {
         }
 
         this.updateMiningUI();
+        this.updateConnectionIndicator();
     }
 
     // Update mining UI
     updateMiningUI() {
         const miningStatus = document.getElementById('miningStatus');
         if (miningStatus) {
-            miningStatus.textContent = this.isMining ? 'Active' : 'Inactive';
+            miningStatus.textContent = this.isMining ? 'Mining' : 'Idle';
             miningStatus.className = this.isMining ? 'status-active' : 'status-inactive';
         }
 
@@ -1137,11 +1305,16 @@ class BiriliumBlockchainWallet {
             }
         }
 
-        // Simulated hashrate display
-        const hashrate = this.isMining ? (this.hasSubscription ? 50000 : 5000) + Math.random() * 10000 : 0;
+        // Real hashrate display from local mining
         const hashrateEl = document.getElementById('hashrate');
         if (hashrateEl) {
-            hashrateEl.textContent = `${hashrate.toFixed(2)} H/s`;
+            if (this.currentHashrate > 1000000) {
+                hashrateEl.textContent = `${(this.currentHashrate / 1000000).toFixed(2)} MH/s`;
+            } else if (this.currentHashrate > 1000) {
+                hashrateEl.textContent = `${(this.currentHashrate / 1000).toFixed(2)} KH/s`;
+            } else {
+                hashrateEl.textContent = `${this.currentHashrate.toFixed(0)} H/s`;
+            }
         }
 
         // Calculate total mined

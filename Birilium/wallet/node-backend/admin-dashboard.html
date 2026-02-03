@@ -818,6 +818,33 @@
             <div class="nav-tab" data-tab="analytics">Analytics</div>
         </div>
 
+        <!-- Connect Wallet Modal -->
+        <div id="connect-wallet-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center;">
+            <div style="background: #1a1a2e; padding: 30px; border-radius: 10px; width: 500px; max-width: 90%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">🔗 Connect Wallet</h2>
+                    <button onclick="hideConnectWalletModal()" style="background: none; border: none; color: #888; font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+                <p style="color: #888; margin-bottom: 20px;">Enter your wallet address to track it in the admin panel. Your private key is never required.</p>
+
+                <div class="form-group">
+                    <label>Wallet Address (Public Key)</label>
+                    <input type="text" id="modal-wallet-address" placeholder="04abc123..." style="font-family: monospace; font-size: 12px;">
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="connectWalletFromModal()" style="flex: 1;">
+                        <span>🔗 Connect</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="useLastGeneratedInModal()" style="flex: 1;">
+                        <span>📋 Use Last Generated</span>
+                    </button>
+                </div>
+
+                <div id="modal-wallet-result" style="display: none; margin-top: 15px; padding: 15px; border-radius: 8px;"></div>
+            </div>
+        </div>
+
         <div class="container">
             <!-- Overview Tab -->
             <div class="tab-content active" id="tab-overview">
@@ -862,6 +889,60 @@
                         <h3>Node Uptime</h3>
                         <div class="value" id="kpi-uptime">0h 0m</div>
                         <div class="subtitle">Running</div>
+                    </div>
+                </div>
+
+                <!-- Admin Wallet Section -->
+                <div class="table-container" id="admin-wallet-section">
+                    <div class="table-header">
+                        <h2>💼 Admin Wallet</h2>
+                        <button class="btn btn-small" id="admin-wallet-connect-btn" onclick="showConnectWalletModal()">Connect Wallet</button>
+                    </div>
+                    <div id="admin-wallet-not-connected" style="padding: 30px; text-align: center; color: #888;">
+                        <p style="font-size: 48px; margin-bottom: 15px;">🔐</p>
+                        <p style="margin-bottom: 15px;">No wallet connected</p>
+                        <button class="btn btn-primary" onclick="showConnectWalletModal()">Connect Your Wallet</button>
+                    </div>
+                    <div id="admin-wallet-connected" style="display: none;">
+                        <div class="kpi-grid" style="margin-bottom: 20px;">
+                            <div class="kpi-card gold">
+                                <h3>Balance</h3>
+                                <div class="value" id="admin-wallet-balance">0</div>
+                                <div class="subtitle">BRL</div>
+                            </div>
+                            <div class="kpi-card purple">
+                                <h3>Mining Rewards</h3>
+                                <div class="value" id="admin-wallet-mining">0</div>
+                                <div class="subtitle">BRL earned</div>
+                            </div>
+                            <div class="kpi-card blue">
+                                <h3>Transactions</h3>
+                                <div class="value" id="admin-wallet-tx-count">0</div>
+                                <div class="subtitle">Total</div>
+                            </div>
+                            <div class="kpi-card green">
+                                <h3>Nonce</h3>
+                                <div class="value" id="admin-wallet-nonce">0</div>
+                                <div class="subtitle">Next TX #</div>
+                            </div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <label style="font-weight: bold; color: #888;">Connected Address:</label>
+                                <button class="btn btn-small btn-danger" onclick="disconnectAdminWallet()">Disconnect</button>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="admin-wallet-address-display" readonly style="flex: 1; font-family: monospace; font-size: 11px; background: rgba(0,0,0,0.3); border: 1px solid #444; padding: 10px; border-radius: 5px; color: #4CAF50;">
+                                <button class="btn btn-small" onclick="copyToClipboard('admin-wallet-address-display')">📋 Copy</button>
+                            </div>
+                        </div>
+                        <!-- Recent Activity -->
+                        <div style="margin-top: 20px;">
+                            <h3 style="margin-bottom: 10px;">Recent Activity</h3>
+                            <div id="admin-wallet-activity" style="max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+                                <div style="color: #888; text-align: center;">No recent activity</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1032,6 +1113,88 @@
 
             <!-- Wallets Tab -->
             <div class="tab-content" id="tab-wallets">
+                <!-- Connected Wallets Section -->
+                <div class="table-section" style="margin-bottom: 30px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>🔗 Connected Wallets (Real-Time)</h2>
+                        <button class="btn btn-small" onclick="refreshConnectedWallets()">🔄 Refresh</button>
+                    </div>
+                    <p style="color: #888; margin-bottom: 15px;">Live tracking of wallets connected to the node. Updates automatically when balances change.</p>
+
+                    <div class="kpi-grid" style="margin-bottom: 20px;">
+                        <div class="kpi-card blue">
+                            <h3>Connected Wallets</h3>
+                            <div class="value" id="connected-wallet-count">0</div>
+                            <div class="subtitle">Currently online</div>
+                        </div>
+                        <div class="kpi-card green">
+                            <h3>Total Balance</h3>
+                            <div class="value" id="connected-total-balance">0 BRL</div>
+                            <div class="subtitle">Combined balance</div>
+                        </div>
+                        <div class="kpi-card purple">
+                            <h3>Mining Rewards</h3>
+                            <div class="value" id="connected-mining-rewards">0 BRL</div>
+                            <div class="subtitle">Total mined by connected</div>
+                        </div>
+                    </div>
+
+                    <table id="connected-wallets-table">
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>IP</th>
+                                <th>Balance</th>
+                                <th>Mining Rewards</th>
+                                <th>Transactions</th>
+                                <th>Connected</th>
+                                <th>Last Activity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="connected-wallets-tbody">
+                            <tr><td colspan="7" style="text-align:center; color: #888;">No wallets connected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Activity Feed Section -->
+                <div class="table-section" style="margin-bottom: 30px;">
+                    <h2>📊 Wallet Activity Feed</h2>
+                    <p style="color: #888; margin-bottom: 15px;">Real-time activity from connected wallets.</p>
+                    <div id="wallet-activity-feed" style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+                        <div style="color: #888; text-align: center;">Waiting for activity...</div>
+                    </div>
+                </div>
+
+                <!-- Connect Wallet Section -->
+                <div class="mining-section" style="margin-bottom: 30px;">
+                    <h2>🔗 Connect Admin Wallet</h2>
+                    <p style="color: #888; margin-bottom: 20px;">Connect your wallet to track balance and activity in real-time on the Overview page.</p>
+
+                    <div class="mining-form">
+                        <div id="connect-wallet-form">
+                            <div class="form-group">
+                                <label>Wallet Address (Public Key)</label>
+                                <input type="text" id="connect-wallet-address" placeholder="04abc123... (paste your wallet address)" style="font-family: monospace; font-size: 12px;">
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                <button class="btn btn-primary" onclick="connectAdminWallet()">
+                                    <span>🔗 Connect Wallet</span>
+                                </button>
+                                <button class="btn btn-secondary" onclick="connectFromGenerated()">
+                                    <span>📋 Use Last Generated</span>
+                                </button>
+                            </div>
+                            <div id="connect-wallet-result" style="display: none; margin-top: 15px; padding: 15px; border-radius: 8px;"></div>
+                        </div>
+
+                        <div style="background: rgba(102,126,234,0.1); padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 3px solid #667eea;">
+                            <strong style="color: #667eea;">💡 Tip:</strong>
+                            <p style="margin-top: 5px; font-size: 13px;">You only need to enter your public wallet address to track it. Your private key is never sent to the server. The wallet data is stored in your browser only.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mining-section">
                     <h2>Wallet Generator</h2>
                     <p style="color: #888; margin-bottom: 20px;">Generate new wallets and optionally fund them with BIR coins.</p>
@@ -1088,6 +1251,35 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="mining-section" style="margin-top: 30px;">
+                    <h2>💸 Send Coins</h2>
+                    <p style="color: #888; margin-bottom: 20px;">Send coins to any wallet address. This creates a coinbase transaction (minting new coins).</p>
+
+                    <div class="mining-form">
+                        <div class="form-group">
+                            <label>Recipient Address</label>
+                            <input type="text" id="sendToAddress" placeholder="04abc123..." style="font-family: monospace;">
+                        </div>
+                        <div class="form-group">
+                            <label>Amount (BRL)</label>
+                            <input type="number" id="sendAmount" value="100" min="0.01" step="0.01" style="width: 150px;">
+                        </div>
+                        <button class="btn btn-success" onclick="adminSendCoins()">
+                            <span id="sendBtnText">💸 Send Coins</span>
+                        </button>
+                        <div id="sendResult" style="display: none; margin-top: 15px; padding: 15px; border-radius: 8px;"></div>
+                    </div>
+                </div>
+
+                <div class="mining-section" style="margin-top: 30px;">
+                    <h2>🧹 Mempool Management</h2>
+                    <p style="color: #888; margin-bottom: 20px;">Clean stale transactions from the mempool (transactions with already-used nonces).</p>
+                    <button class="btn btn-warning" onclick="cleanMempool()">
+                        <span>🧹 Clean Stale Transactions</span>
+                    </button>
+                    <div id="cleanResult" style="display: none; margin-top: 15px; padding: 15px; border-radius: 8px;"></div>
                 </div>
 
                 <div class="table-section" style="margin-top: 30px;">
@@ -1355,6 +1547,9 @@
                     document.getElementById('dashboard').style.display = 'block';
                     loadDashboard();
                     startAutoRefresh();
+                    refreshConnectedWallets();
+                    initAdminWebSocket();
+                    initAdminWallet();
                     showToast('Login successful', 'success');
                 } else {
                     errorDiv.textContent = data.error || 'Login failed';
@@ -1372,6 +1567,11 @@
             accessToken = null;
             localStorage.removeItem('adminToken');
             if (refreshInterval) clearInterval(refreshInterval);
+            if (adminWs) {
+                adminWs.close();
+                adminWs = null;
+            }
+            connectedWallets = [];
             document.getElementById('dashboard').style.display = 'none';
             document.getElementById('loginPage').style.display = 'flex';
             document.getElementById('password').value = '';
@@ -2135,6 +2335,87 @@
             loadDashboardData();
         }
 
+        // ==================== ADMIN SEND COINS ====================
+        async function adminSendCoins() {
+            const toAddress = document.getElementById('sendToAddress').value.trim();
+            const amount = parseFloat(document.getElementById('sendAmount').value);
+            const resultDiv = document.getElementById('sendResult');
+            const sendBtn = document.getElementById('sendBtnText');
+
+            if (!toAddress) {
+                resultDiv.innerHTML = '<span style="color: #f44336;">❌ Please enter a recipient address</span>';
+                resultDiv.style.display = 'block';
+                resultDiv.style.background = 'rgba(244,67,54,0.2)';
+                return;
+            }
+
+            if (!amount || amount <= 0) {
+                resultDiv.innerHTML = '<span style="color: #f44336;">❌ Please enter a valid amount</span>';
+                resultDiv.style.display = 'block';
+                resultDiv.style.background = 'rgba(244,67,54,0.2)';
+                return;
+            }
+
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/send-coins`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({ toAddress, amount })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    resultDiv.innerHTML = `<span style="color: #4CAF50;">✓ ${data.message}</span><br><small style="color: #888;">${data.note}</small>`;
+                    resultDiv.style.background = 'rgba(76,175,80,0.2)';
+                    showToast('Coins queued for sending! Mine a block to confirm.', 'success');
+                } else {
+                    resultDiv.innerHTML = `<span style="color: #f44336;">❌ ${data.error}</span>`;
+                    resultDiv.style.background = 'rgba(244,67,54,0.2)';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: #f44336;">❌ Error: ${error.message}</span>`;
+                resultDiv.style.background = 'rgba(244,67,54,0.2)';
+            }
+
+            resultDiv.style.display = 'block';
+            sendBtn.textContent = '💸 Send Coins';
+        }
+
+        // ==================== MEMPOOL MANAGEMENT ====================
+        async function cleanMempool() {
+            const resultDiv = document.getElementById('cleanResult');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/clean-mempool`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    resultDiv.innerHTML = `<span style="color: #4CAF50;">✓ Cleaned ${data.removed} stale transactions. ${data.remaining} remaining in mempool.</span>`;
+                    resultDiv.style.background = 'rgba(76,175,80,0.2)';
+                    showToast(`Cleaned ${data.removed} stale transactions`, 'success');
+                } else {
+                    resultDiv.innerHTML = `<span style="color: #f44336;">❌ ${data.error}</span>`;
+                    resultDiv.style.background = 'rgba(244,67,54,0.2)';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: #f44336;">❌ Error: ${error.message}</span>`;
+                resultDiv.style.background = 'rgba(244,67,54,0.2)';
+            }
+
+            resultDiv.style.display = 'block';
+        }
+
         function updateWalletsTable() {
             const tbody = document.getElementById('wallets-tbody');
             if (generatedWallets.length === 0) {
@@ -2343,6 +2624,485 @@
             showToast(`Downloaded ${filename}`, 'success');
         }
 
+        // ==================== CONNECTED WALLETS ====================
+        let connectedWallets = [];
+        let walletActivityFeed = [];
+        let adminWs = null;
+
+        // ==================== ADMIN WALLET ====================
+        let adminWallet = JSON.parse(localStorage.getItem('adminWallet')) || null;
+
+        function showConnectWalletModal() {
+            document.getElementById('connect-wallet-modal').style.display = 'flex';
+            document.getElementById('modal-wallet-address').value = '';
+            document.getElementById('modal-wallet-result').style.display = 'none';
+        }
+
+        function hideConnectWalletModal() {
+            document.getElementById('connect-wallet-modal').style.display = 'none';
+        }
+
+        function connectWalletFromModal() {
+            const address = document.getElementById('modal-wallet-address').value.trim();
+            if (!address) {
+                showModalResult('Please enter a wallet address', 'error');
+                return;
+            }
+            if (!address.startsWith('04') || address.length < 50) {
+                showModalResult('Invalid wallet address format. Should start with 04 and be at least 50 characters.', 'error');
+                return;
+            }
+            connectAdminWalletWithAddress(address);
+            hideConnectWalletModal();
+        }
+
+        function useLastGeneratedInModal() {
+            if (generatedWallets.length === 0) {
+                showModalResult('No wallets generated yet. Generate a wallet first.', 'error');
+                return;
+            }
+            const lastWallet = generatedWallets[generatedWallets.length - 1];
+            document.getElementById('modal-wallet-address').value = lastWallet.address;
+        }
+
+        function showModalResult(message, type) {
+            const resultDiv = document.getElementById('modal-wallet-result');
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = type === 'error' ? 'rgba(244,67,54,0.2)' : 'rgba(76,175,80,0.2)';
+            resultDiv.style.color = type === 'error' ? '#f44336' : '#4CAF50';
+            resultDiv.textContent = message;
+        }
+
+        function connectAdminWallet() {
+            const address = document.getElementById('connect-wallet-address').value.trim();
+            if (!address) {
+                showConnectResult('Please enter a wallet address', 'error');
+                return;
+            }
+            if (!address.startsWith('04') || address.length < 50) {
+                showConnectResult('Invalid wallet address format. Should start with 04 and be at least 50 characters.', 'error');
+                return;
+            }
+            connectAdminWalletWithAddress(address);
+        }
+
+        function connectFromGenerated() {
+            if (generatedWallets.length === 0) {
+                showConnectResult('No wallets generated yet. Generate a wallet first.', 'error');
+                return;
+            }
+            const lastWallet = generatedWallets[generatedWallets.length - 1];
+            document.getElementById('connect-wallet-address').value = lastWallet.address;
+            connectAdminWalletWithAddress(lastWallet.address);
+        }
+
+        function showConnectResult(message, type) {
+            const resultDiv = document.getElementById('connect-wallet-result');
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = type === 'error' ? 'rgba(244,67,54,0.2)' : 'rgba(76,175,80,0.2)';
+            resultDiv.style.color = type === 'error' ? '#f44336' : '#4CAF50';
+            resultDiv.textContent = message;
+            setTimeout(() => { resultDiv.style.display = 'none'; }, 5000);
+        }
+
+        async function connectAdminWalletWithAddress(address) {
+            try {
+                // Fetch wallet data from API
+                const response = await apiRequest(`/balance/${address}`);
+
+                adminWallet = {
+                    address: address,
+                    balance: response.balance || 0,
+                    nonce: response.nonce || 0,
+                    connectedAt: Date.now(),
+                    miningRewards: 0,
+                    txCount: 0
+                };
+
+                // Get transaction count
+                try {
+                    const txResponse = await apiRequest(`/transactions/${address}`);
+                    if (txResponse && Array.isArray(txResponse)) {
+                        adminWallet.txCount = txResponse.length;
+                        // Calculate mining rewards from coinbase transactions
+                        adminWallet.miningRewards = txResponse
+                            .filter(tx => tx.toAddress === address && !tx.fromAddress)
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                    }
+                } catch (e) {
+                    console.log('Could not fetch transactions:', e);
+                }
+
+                // Save to localStorage
+                localStorage.setItem('adminWallet', JSON.stringify(adminWallet));
+
+                // Update UI
+                updateAdminWalletUI();
+                showToast(`Wallet connected: ${address.substring(0, 16)}...`, 'success');
+                showConnectResult('Wallet connected successfully!', 'success');
+
+            } catch (error) {
+                console.error('Error connecting wallet:', error);
+                showConnectResult('Error connecting wallet: ' + error.message, 'error');
+            }
+        }
+
+        function disconnectAdminWallet() {
+            adminWallet = null;
+            localStorage.removeItem('adminWallet');
+            updateAdminWalletUI();
+            showToast('Wallet disconnected', 'info');
+        }
+
+        function updateAdminWalletUI() {
+            const notConnectedDiv = document.getElementById('admin-wallet-not-connected');
+            const connectedDiv = document.getElementById('admin-wallet-connected');
+            const connectBtn = document.getElementById('admin-wallet-connect-btn');
+
+            if (adminWallet) {
+                notConnectedDiv.style.display = 'none';
+                connectedDiv.style.display = 'block';
+                connectBtn.style.display = 'none';
+
+                document.getElementById('admin-wallet-balance').textContent = (adminWallet.balance || 0).toFixed(2);
+                document.getElementById('admin-wallet-mining').textContent = (adminWallet.miningRewards || 0).toFixed(2);
+                document.getElementById('admin-wallet-tx-count').textContent = adminWallet.txCount || 0;
+                document.getElementById('admin-wallet-nonce').textContent = (adminWallet.nonce || 0) + 1;
+                document.getElementById('admin-wallet-address-display').value = adminWallet.address;
+            } else {
+                notConnectedDiv.style.display = 'block';
+                connectedDiv.style.display = 'none';
+                connectBtn.style.display = 'inline-block';
+            }
+        }
+
+        async function refreshAdminWallet() {
+            if (!adminWallet) return;
+
+            try {
+                const response = await apiRequest(`/balance/${adminWallet.address}`);
+                const oldBalance = adminWallet.balance;
+                adminWallet.balance = response.balance || 0;
+                adminWallet.nonce = response.nonce || 0;
+
+                // Check for balance change
+                if (oldBalance !== adminWallet.balance) {
+                    const diff = adminWallet.balance - oldBalance;
+                    addAdminWalletActivity(diff > 0 ? 'received' : 'sent', Math.abs(diff));
+                }
+
+                // Get updated transaction count
+                try {
+                    const txResponse = await apiRequest(`/transactions/${adminWallet.address}`);
+                    if (txResponse && Array.isArray(txResponse)) {
+                        adminWallet.txCount = txResponse.length;
+                        adminWallet.miningRewards = txResponse
+                            .filter(tx => tx.toAddress === adminWallet.address && !tx.fromAddress)
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                    }
+                } catch (e) {}
+
+                localStorage.setItem('adminWallet', JSON.stringify(adminWallet));
+                updateAdminWalletUI();
+
+            } catch (error) {
+                console.error('Error refreshing admin wallet:', error);
+            }
+        }
+
+        function addAdminWalletActivity(type, amount) {
+            const activityDiv = document.getElementById('admin-wallet-activity');
+            const timestamp = new Date().toLocaleTimeString();
+
+            let icon, message, color;
+            switch (type) {
+                case 'received':
+                    icon = '📥';
+                    message = `Received +${amount.toFixed(2)} BRL`;
+                    color = '#4CAF50';
+                    break;
+                case 'sent':
+                    icon = '📤';
+                    message = `Sent -${amount.toFixed(2)} BRL`;
+                    color = '#ff9800';
+                    break;
+                case 'mining':
+                    icon = '⛏️';
+                    message = `Mined +${amount.toFixed(2)} BRL`;
+                    color = '#9c27b0';
+                    break;
+                default:
+                    icon = '📌';
+                    message = type;
+                    color = '#888';
+            }
+
+            const entry = document.createElement('div');
+            entry.style.cssText = `padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;`;
+            entry.innerHTML = `
+                <span style="color: #888;">[${timestamp}]</span>
+                <span>${icon}</span>
+                <span style="color: ${color};">${message}</span>
+                <span style="color: #888;">Balance: ${adminWallet.balance.toFixed(2)} BRL</span>
+            `;
+
+            // Remove "No recent activity" message if present
+            if (activityDiv.children.length === 1 && activityDiv.children[0].textContent.includes('No recent')) {
+                activityDiv.innerHTML = '';
+            }
+
+            activityDiv.insertBefore(entry, activityDiv.firstChild);
+
+            // Keep only last 20 entries
+            while (activityDiv.children.length > 20) {
+                activityDiv.removeChild(activityDiv.lastChild);
+            }
+        }
+
+        // Initialize admin wallet on page load
+        function initAdminWallet() {
+            if (adminWallet) {
+                updateAdminWalletUI();
+                refreshAdminWallet();
+            }
+        }
+
+        async function refreshConnectedWallets() {
+            try {
+                const response = await apiRequest('/admin/connected-wallets');
+                if (response.success) {
+                    connectedWallets = response.wallets || [];
+                    updateConnectedWalletsUI();
+                }
+            } catch (error) {
+                console.error('Error loading connected wallets:', error);
+            }
+        }
+
+        function updateConnectedWalletsUI() {
+            // Update count
+            document.getElementById('connected-wallet-count').textContent = connectedWallets.length;
+
+            // Calculate totals
+            let totalBalance = 0;
+            let totalMiningRewards = 0;
+            connectedWallets.forEach(w => {
+                totalBalance += w.balance || 0;
+                totalMiningRewards += w.miningRewards || 0;
+            });
+
+            document.getElementById('connected-total-balance').textContent = totalBalance.toFixed(2) + ' BRL';
+            document.getElementById('connected-mining-rewards').textContent = totalMiningRewards.toFixed(2) + ' BRL';
+
+            // Update table
+            const tbody = document.getElementById('connected-wallets-tbody');
+            if (connectedWallets.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #888;">No wallets connected</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = connectedWallets.map(w => `
+                <tr>
+                    <td style="font-family: monospace; font-size: 11px;" title="${w.address}">${w.addressShort}</td>
+                    <td>${w.ip || 'Unknown'}</td>
+                    <td style="color: #4CAF50; font-weight: bold;">${(w.balance || 0).toFixed(2)} BRL</td>
+                    <td style="color: #9c27b0;">${(w.miningRewards || 0).toFixed(2)} BRL</td>
+                    <td>${w.txCount || 0}</td>
+                    <td>${formatDuration(w.connectedDuration)}</td>
+                    <td>${formatTimeAgo(new Date(w.lastActivity))}</td>
+                </tr>
+            `).join('');
+        }
+
+        function formatDuration(ms) {
+            if (!ms) return '-';
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+
+        function formatTimeAgo(date) {
+            if (!date) return '-';
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 60) return 'Just now';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            return Math.floor(seconds / 86400) + 'd ago';
+        }
+
+        function addWalletActivity(type, data) {
+            const activityFeed = document.getElementById('wallet-activity-feed');
+            const timestamp = new Date().toLocaleTimeString();
+            let icon, message, color;
+
+            switch (type) {
+                case 'connected':
+                    icon = '🟢';
+                    message = `Wallet ${data.addressShort} connected from ${data.ip}`;
+                    color = '#4CAF50';
+                    break;
+                case 'disconnected':
+                    icon = '🔴';
+                    message = `Wallet ${data.addressShort} disconnected (${formatDuration(data.duration)}, ${data.txCount} txs)`;
+                    color = '#f44336';
+                    break;
+                case 'balanceUpdate':
+                    if (data.changeType === 'mining') {
+                        icon = '⛏️';
+                        message = `${data.addressShort} mined +${data.amount.toFixed(2)} BRL (total: ${data.balance.toFixed(2)} BRL)`;
+                        color = '#9c27b0';
+                    } else if (data.changeType === 'received') {
+                        icon = '📥';
+                        message = `${data.addressShort} received +${data.amount.toFixed(2)} BRL (total: ${data.balance.toFixed(2)} BRL)`;
+                        color = '#4CAF50';
+                    } else {
+                        icon = '📤';
+                        message = `${data.addressShort} sent -${data.amount.toFixed(2)} BRL (total: ${data.balance.toFixed(2)} BRL)`;
+                        color = '#ff9800';
+                    }
+                    break;
+                default:
+                    icon = '📌';
+                    message = JSON.stringify(data);
+                    color = '#888';
+            }
+
+            const entry = document.createElement('div');
+            entry.style.cssText = `padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;`;
+            entry.innerHTML = `
+                <span style="color: #888;">[${timestamp}]</span>
+                <span>${icon}</span>
+                <span style="color: ${color};">${message}</span>
+            `;
+
+            // Remove "waiting for activity" message if present
+            if (activityFeed.children.length === 1 && activityFeed.children[0].textContent.includes('Waiting')) {
+                activityFeed.innerHTML = '';
+            }
+
+            activityFeed.insertBefore(entry, activityFeed.firstChild);
+
+            // Keep only last 50 entries
+            while (activityFeed.children.length > 50) {
+                activityFeed.removeChild(activityFeed.lastChild);
+            }
+        }
+
+        // ==================== ADMIN WEBSOCKET ====================
+        function initAdminWebSocket() {
+            if (!accessToken) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/admin-ws?token=${accessToken}`;
+
+            try {
+                adminWs = new WebSocket(wsUrl);
+
+                adminWs.onopen = () => {
+                    console.log('Admin WebSocket connected');
+                    // Subscribe to wallet events
+                    adminWs.send(JSON.stringify({
+                        type: 'subscribe',
+                        events: ['wallet.connected', 'wallet.disconnected', 'wallet.balanceUpdate', 'chain.newBlock', 'mempool.update']
+                    }));
+                };
+
+                adminWs.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        handleAdminWsMessage(message);
+                    } catch (e) {
+                        console.error('WebSocket message parse error:', e);
+                    }
+                };
+
+                adminWs.onclose = () => {
+                    console.log('Admin WebSocket disconnected, reconnecting in 5s...');
+                    setTimeout(initAdminWebSocket, 5000);
+                };
+
+                adminWs.onerror = (error) => {
+                    console.error('Admin WebSocket error:', error);
+                };
+            } catch (e) {
+                console.error('Failed to create WebSocket:', e);
+            }
+        }
+
+        function handleAdminWsMessage(message) {
+            const { event, data } = message;
+
+            switch (event) {
+                case 'wallet.connected':
+                    // Add to connected wallets list
+                    connectedWallets.push(data);
+                    updateConnectedWalletsUI();
+                    addWalletActivity('connected', data);
+                    showToast(`Wallet connected: ${data.addressShort}`, 'info');
+                    break;
+
+                case 'wallet.disconnected':
+                    // Remove from connected wallets list
+                    connectedWallets = connectedWallets.filter(w => w.address !== data.address);
+                    updateConnectedWalletsUI();
+                    addWalletActivity('disconnected', data);
+                    break;
+
+                case 'wallet.balanceUpdate':
+                    // Update wallet balance in list
+                    const wallet = connectedWallets.find(w => w.address === data.address);
+                    if (wallet) {
+                        wallet.balance = data.balance;
+                        wallet.txCount = data.txCount;
+                        wallet.miningRewards = data.miningRewards;
+                        updateConnectedWalletsUI();
+                    }
+                    addWalletActivity('balanceUpdate', data);
+
+                    // Also update admin wallet if it matches
+                    if (adminWallet && adminWallet.address === data.address) {
+                        const oldBalance = adminWallet.balance;
+                        adminWallet.balance = data.balance;
+                        adminWallet.txCount = data.txCount;
+                        adminWallet.miningRewards = data.miningRewards;
+                        localStorage.setItem('adminWallet', JSON.stringify(adminWallet));
+                        updateAdminWalletUI();
+
+                        // Add activity
+                        if (data.changeType === 'mining') {
+                            addAdminWalletActivity('mining', data.amount);
+                        } else if (data.changeType === 'received') {
+                            addAdminWalletActivity('received', data.amount);
+                        } else if (data.changeType === 'sent') {
+                            addAdminWalletActivity('sent', data.amount);
+                        }
+                    }
+                    break;
+
+                case 'chain.newBlock':
+                    // Update block count KPI
+                    document.getElementById('kpi-blocks').textContent = data.height;
+                    break;
+
+                case 'mempool.update':
+                    // Update pending tx count
+                    document.getElementById('kpi-pending').textContent = data.pendingCount;
+                    break;
+
+                case 'initial-state':
+                    // Handle initial state on connect
+                    if (data.chain) {
+                        document.getElementById('kpi-blocks').textContent = data.chain.height || 0;
+                        document.getElementById('kpi-difficulty').textContent = data.chain.difficulty || 0;
+                        document.getElementById('kpi-supply').textContent = parseFloat(data.chain.currentSupply || 0).toFixed(2);
+                    }
+                    break;
+            }
+        }
+
         // ==================== CHECK STORED TOKEN ====================
         const storedToken = localStorage.getItem('adminToken');
         if (storedToken) {
@@ -2353,6 +3113,9 @@
                 document.getElementById('dashboard').style.display = 'block';
                 loadDashboard();
                 startAutoRefresh();
+                refreshConnectedWallets();
+                initAdminWebSocket();
+                initAdminWallet();
             }).catch(() => {
                 localStorage.removeItem('adminToken');
             });
