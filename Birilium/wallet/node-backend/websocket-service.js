@@ -11,12 +11,23 @@ class WebSocketService {
     constructor() {
         this.wss = null;
         this.clients = new Map(); // Map<WebSocket, {address, subscriptions}>
+        this.walletRegistry = new Map(); // Map<address, {ip, connectedAt, lastActivity, balance, txCount, miningRewards}>
+        this.adminWebSocket = null; // Reference to admin WebSocket for notifications
+        this.blockchain = null; // Reference to blockchain for balance lookups
         this.stats = {
             totalConnections: 0,
             activeConnections: 0,
             messagesSent: 0,
             messagesReceived: 0
         };
+    }
+
+    /**
+     * Set references to other services
+     */
+    setReferences(adminWebSocket, blockchain) {
+        this.adminWebSocket = adminWebSocket;
+        this.blockchain = blockchain;
     }
 
     /**
@@ -173,6 +184,8 @@ class WebSocketService {
 
         if (address) {
             client.address = address;
+            // Register wallet in registry for admin tracking
+            this._registerWallet(address, client.ip);
         }
 
         this._send(ws, {
@@ -181,6 +194,76 @@ class WebSocketService {
         });
 
         logger.debug({ clientId: client.id, channel, address }, 'Client subscribed');
+    }
+
+    /**
+     * Register a wallet in the registry for admin tracking
+     * @param {string} address - Wallet address
+     * @param {string} ip - Client IP address
+     */
+    _registerWallet(address, ip) {
+        const existingWallet = this.walletRegistry.get(address);
+        const currentBalance = this.blockchain ? this.blockchain.getBalanceOfAddress(address) : 0;
+
+        if (!existingWallet) {
+            // New wallet connection
+            const walletData = {
+                address: address,
+                ip: ip,
+                connectedAt: Date.now(),
+                lastActivity: Date.now(),
+                balance: currentBalance,
+                previousBalance: currentBalance,
+                txCount: 0,
+                miningRewards: 0
+            };
+            this.walletRegistry.set(address, walletData);
+
+            // Notify admin of new wallet connection
+            if (this.adminWebSocket) {
+                this.adminWebSocket.onWalletConnected(walletData);
+            }
+
+            logger.info({ address: address.substring(0, 20) + '...', ip }, 'Wallet registered');
+        } else {
+            // Update existing wallet
+            existingWallet.lastActivity = Date.now();
+            existingWallet.balance = currentBalance;
+        }
+    }
+
+    /**
+     * Update wallet balance and notify admin
+     * @param {string} address - Wallet address
+     * @param {number} newBalance - New balance
+     * @param {string} changeType - Type of change ('sent', 'received', 'mining')
+     * @param {number} amount - Amount changed
+     */
+    updateWalletBalance(address, newBalance, changeType, amount) {
+        const wallet = this.walletRegistry.get(address);
+        if (wallet) {
+            wallet.previousBalance = wallet.balance;
+            wallet.balance = newBalance;
+            wallet.lastActivity = Date.now();
+            wallet.txCount++;
+
+            if (changeType === 'mining') {
+                wallet.miningRewards += amount;
+            }
+
+            // Notify admin of balance change
+            if (this.adminWebSocket) {
+                this.adminWebSocket.onWalletBalanceUpdate({
+                    address: address,
+                    balance: newBalance,
+                    previousBalance: wallet.previousBalance,
+                    changeType: changeType,
+                    amount: amount,
+                    txCount: wallet.txCount,
+                    miningRewards: wallet.miningRewards
+                });
+            }
+        }
     }
 
     /**
@@ -210,10 +293,52 @@ class WebSocketService {
 
         if (client) {
             logger.info({ clientId: client.id }, 'WebSocket client disconnected');
+
+            // Check if this wallet should be unregistered
+            if (client.address) {
+                this._unregisterWallet(client.address, client.id);
+            }
         }
 
         this.clients.delete(ws);
         this.stats.activeConnections = this.clients.size;
+    }
+
+    /**
+     * Unregister a wallet when last connection closes
+     * @param {string} address - Wallet address
+     * @param {string} disconnectingClientId - ID of the disconnecting client
+     */
+    _unregisterWallet(address, disconnectingClientId) {
+        // Check if any other clients are still connected with this address
+        let otherClientsWithAddress = 0;
+        for (const [ws, client] of this.clients.entries()) {
+            if (client.address === address && client.id !== disconnectingClientId) {
+                otherClientsWithAddress++;
+            }
+        }
+
+        // Only unregister if no other clients with this address
+        if (otherClientsWithAddress === 0) {
+            const wallet = this.walletRegistry.get(address);
+            if (wallet) {
+                const duration = Date.now() - wallet.connectedAt;
+
+                // Notify admin of wallet disconnection
+                if (this.adminWebSocket) {
+                    this.adminWebSocket.onWalletDisconnected({
+                        address: address,
+                        duration: duration,
+                        finalBalance: wallet.balance,
+                        txCount: wallet.txCount,
+                        miningRewards: wallet.miningRewards
+                    });
+                }
+
+                this.walletRegistry.delete(address);
+                logger.info({ address: address.substring(0, 20) + '...' }, 'Wallet unregistered');
+            }
+        }
     }
 
     /**
@@ -272,20 +397,50 @@ class WebSocketService {
         // Invalidate caches
         invalidateOnChange('block_mined', block);
 
-        // Also notify transactions in this block
+        // Track balance changes for registered wallets and notify
         for (const tx of block.transactions) {
+            // Handle received amounts (including mining rewards)
             if (tx.toAddress) {
+                const isMiningReward = tx.fromAddress === null;
+                const newBalance = this.blockchain ? this.blockchain.getBalanceOfAddress(tx.toAddress) : 0;
+
+                // Update wallet registry if this wallet is tracked
+                if (this.walletRegistry.has(tx.toAddress)) {
+                    this.updateWalletBalance(
+                        tx.toAddress,
+                        newBalance,
+                        isMiningReward ? 'mining' : 'received',
+                        tx.amount
+                    );
+                }
+
                 this.broadcast('balance', {
                     address: tx.toAddress,
-                    type: 'received',
-                    amount: tx.amount
+                    type: isMiningReward ? 'mining' : 'received',
+                    amount: tx.amount,
+                    newBalance: newBalance
                 }, tx.toAddress);
             }
+
+            // Handle sent amounts
             if (tx.fromAddress) {
+                const newBalance = this.blockchain ? this.blockchain.getBalanceOfAddress(tx.fromAddress) : 0;
+
+                // Update wallet registry if this wallet is tracked
+                if (this.walletRegistry.has(tx.fromAddress)) {
+                    this.updateWalletBalance(
+                        tx.fromAddress,
+                        newBalance,
+                        'sent',
+                        tx.amount + (tx.fee || 0)
+                    );
+                }
+
                 this.broadcast('balance', {
                     address: tx.fromAddress,
                     type: 'sent',
-                    amount: tx.amount + tx.fee
+                    amount: tx.amount + (tx.fee || 0),
+                    newBalance: newBalance
                 }, tx.fromAddress);
             }
         }
@@ -387,6 +542,38 @@ class WebSocketService {
                 address: c.address ? `${c.address.substring(0, 10)}...` : null
             }))
         };
+    }
+
+    /**
+     * Get all registered wallets with their data
+     * @returns {Array} Array of wallet data
+     */
+    getConnectedWallets() {
+        const wallets = [];
+        for (const [address, data] of this.walletRegistry.entries()) {
+            // Get current balance from blockchain
+            const currentBalance = this.blockchain ? this.blockchain.getBalanceOfAddress(address) : data.balance;
+            wallets.push({
+                address: address,
+                addressShort: address.substring(0, 16) + '...',
+                ip: data.ip,
+                connectedAt: data.connectedAt,
+                connectedDuration: Date.now() - data.connectedAt,
+                lastActivity: data.lastActivity,
+                balance: currentBalance,
+                txCount: data.txCount,
+                miningRewards: data.miningRewards
+            });
+        }
+        return wallets;
+    }
+
+    /**
+     * Get wallet count
+     * @returns {number} Number of registered wallets
+     */
+    getWalletCount() {
+        return this.walletRegistry.size;
     }
 }
 

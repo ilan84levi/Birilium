@@ -13,10 +13,7 @@ async function resetBlockchain() {
     console.log('=== Blockchain Reset Script ===\n');
 
     // Initialize database
-    const dbPath = process.env.SQLITE_DB_PATH || './birilium.db';
-    console.log(`Database path: ${dbPath}`);
-
-    const database = new Database(dbPath);
+    const database = new Database();
     await database.connect();
 
     if (!database.isConnected) {
@@ -25,6 +22,7 @@ async function resetBlockchain() {
     }
 
     console.log('Connected to database\n');
+    console.log(`Database path: ${database.dbPath}`);
 
     // Show current state
     const currentBlocks = await database.loadBlockchain();
@@ -37,6 +35,10 @@ async function resetBlockchain() {
         }
     }
 
+    // Clear existing data using the database manager's clear method
+    console.log('\nClearing existing blockchain data...');
+    await database.clearDatabase();
+
     // Create new blockchain with deterministic genesis
     console.log('\nCreating new blockchain with deterministic genesis...');
     const blockchain = new Blockchain(database);
@@ -44,31 +46,9 @@ async function resetBlockchain() {
     console.log(`  New genesis hash: ${blockchain.chain[0].hash}`);
     console.log(`  Genesis timestamp: ${blockchain.chain[0].timestamp}`);
 
-    // Clear existing data
-    console.log('\nClearing existing blockchain data...');
-
-    // SQLite doesn't have drop methods, so we need to delete all rows
-    const db = database.db;
-
-    await new Promise((resolve, reject) => {
-        db.run('DELETE FROM blocks', [], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-    console.log('  Cleared blocks table');
-
-    await new Promise((resolve, reject) => {
-        db.run('DELETE FROM blockchain_state', [], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-    console.log('  Cleared blockchain_state table');
-
     // Save new genesis block
     console.log('\nSaving new genesis block...');
-    await database.saveBlock(blockchain.chain[0]);
+    await database.saveBlock(blockchain.chain[0], 0);
     await blockchain.saveToDatabase();
 
     // Verify

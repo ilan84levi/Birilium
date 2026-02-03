@@ -161,43 +161,51 @@ class DatabaseManager {
             // Serialize transactions to JSON
             const transactionsJSON = JSON.stringify(block.transactions);
 
-            const stmt = this.db.prepare(`
+            // Prepare statements
+            const blockStmt = this.db.prepare(`
                 INSERT OR REPLACE INTO blocks (block_index, timestamp, transactions, previousHash, hash, nonce, createdAt)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
 
-            stmt.run(
-                blockIndex,
-                block.timestamp,
-                transactionsJSON,
-                block.previousHash,
-                block.hash,
-                block.nonce,
-                Date.now()
-            );
+            const txStmt = this.db.prepare(`
+                INSERT OR IGNORE INTO transactions
+                (txId, fromAddress, toAddress, amount, timestamp, signature, blockHash, blockIndex, blockTimestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
 
-            // Save transactions separately for easier querying
-            if (block.transactions && block.transactions.length > 0) {
-                const txStmt = this.db.prepare(`
-                    INSERT OR IGNORE INTO transactions
-                    (txId, fromAddress, toAddress, amount, timestamp, signature, blockHash, blockIndex, blockTimestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `);
+            // Use a database transaction for atomicity - either all or nothing
+            const saveBlockTransaction = this.db.transaction(() => {
+                // Save block
+                blockStmt.run(
+                    blockIndex,
+                    block.timestamp,
+                    transactionsJSON,
+                    block.previousHash,
+                    block.hash,
+                    block.nonce,
+                    Date.now()
+                );
 
-                for (const tx of block.transactions) {
-                    txStmt.run(
-                        tx.txId || null,
-                        tx.fromAddress || null,
-                        tx.toAddress,
-                        tx.amount,
-                        tx.timestamp,
-                        tx.signature || null,
-                        block.hash,
-                        blockIndex,
-                        block.timestamp
-                    );
+                // Save transactions separately for easier querying
+                if (block.transactions && block.transactions.length > 0) {
+                    for (const tx of block.transactions) {
+                        txStmt.run(
+                            tx.txId || null,
+                            tx.fromAddress || null,
+                            tx.toAddress,
+                            tx.amount,
+                            tx.timestamp,
+                            tx.signature || null,
+                            block.hash,
+                            blockIndex,
+                            block.timestamp
+                        );
+                    }
                 }
-            }
+            });
+
+            // Execute the transaction
+            saveBlockTransaction();
 
             return true;
         } catch (error) {

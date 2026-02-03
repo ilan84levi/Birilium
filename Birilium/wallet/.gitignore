@@ -1,5 +1,10 @@
 # Environment variables (contains sensitive credentials)
+.env
+.env.*
+*.env
 node-backend/.env
+node-backend/.env.*
+node-backend/.env.backup*
 
 # Node modules
 node_modules/
@@ -32,12 +37,15 @@ desktop.ini
 
 # Build outputs
 dist/
+distribution/
 build/
 *.exe
 *.app
 *.dmg
 *.deb
 *.rpm
+*.zip
+*.blockmap
 
 # Backup files
 *.backup

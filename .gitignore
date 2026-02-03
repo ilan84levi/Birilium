@@ -5,7 +5,9 @@ Birilium/wallet/node-backend/node_modules/
 
 # Build outputs
 dist/
+distribution/
 Birilium/wallet/dist/
+Birilium/wallet/distribution/
 build/
 *.exe
 *.dmg
@@ -13,6 +15,8 @@ build/
 *.AppImage
 *.app
 *.rpm
+*.zip
+*.blockmap
 
 # Environment variables and secrets
 .env
@@ -60,3 +64,39 @@ coverage/
 # Production environment backups
 *.env.backup-*
 *.env.production-*
+
+# Credential and configuration files
+**/new for env.txt
+*.txt.credentials
+*.secrets
+*.creds
+credentials.txt
+secrets.txt
+
+# SSH keys
+*.pub
+blr-key-ssh*
+*-ssh-*.txt
+
+# Temporary data files
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!Birilium/**/*.json
+
+# Documents (not code)
+*.docx
+*.pdf
+
+# macOS builds
+macos-dmg.zip
+
+# Misc
+nul
+קישורים.txt
+
+# Office temporary files
+~$*.doc*
+~$*.xls*
+~$*.ppt*

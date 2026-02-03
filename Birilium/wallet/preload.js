@@ -19,8 +19,11 @@ const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js'
 secp256k1.hashes.sha256 = sha256;
 secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
 
-// Security: Expose only safe, sandboxed APIs to the renderer
-contextBridge.exposeInMainWorld('walletAPI', {
+// Check if contextIsolation is enabled (required for contextBridge)
+const isContextIsolated = process.contextIsolated;
+
+// Define wallet API
+const walletAPI = {
   /**
    * Node Status APIs
    */
@@ -243,12 +246,24 @@ contextBridge.exposeInMainWorld('walletAPI', {
     node: process.versions.node,
     chrome: process.versions.chrome
   }
-});
+};
+
+// Expose API based on context isolation setting
+if (isContextIsolated) {
+  // Secure mode: use contextBridge
+  contextBridge.exposeInMainWorld('walletAPI', walletAPI);
+} else {
+  // Legacy mode: expose directly (when nodeIntegration is true)
+  window.walletAPI = walletAPI;
+}
 
 // Security: Remove all Node.js globals from renderer context
-// This prevents any accidental or malicious access to Node APIs
-delete window.require;
-delete window.module;
-delete window.exports;
+// Only do this when contextIsolation is enabled (secure mode)
+// When nodeIntegration is true, renderer needs these globals
+if (isContextIsolated) {
+  delete window.require;
+  delete window.module;
+  delete window.exports;
+}
 
-console.log('✅ Birilium Wallet - Secure preload bridge initialized');
+console.log(`✅ Birilium Wallet - Preload bridge initialized (contextIsolation: ${isContextIsolated})`);

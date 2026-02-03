@@ -268,6 +268,49 @@ class AdminWebSocketServer {
     }
 
     /**
+     * Event: Wallet connected
+     */
+    onWalletConnected(walletData) {
+        this.broadcast('wallet.connected', {
+            address: walletData.address,
+            addressShort: walletData.address.substring(0, 16) + '...',
+            ip: walletData.ip,
+            balance: walletData.balance,
+            connectedAt: walletData.connectedAt
+        });
+    }
+
+    /**
+     * Event: Wallet disconnected
+     */
+    onWalletDisconnected(walletData) {
+        this.broadcast('wallet.disconnected', {
+            address: walletData.address,
+            addressShort: walletData.address.substring(0, 16) + '...',
+            duration: walletData.duration,
+            finalBalance: walletData.finalBalance,
+            txCount: walletData.txCount,
+            miningRewards: walletData.miningRewards
+        });
+    }
+
+    /**
+     * Event: Wallet balance updated
+     */
+    onWalletBalanceUpdate(data) {
+        this.broadcast('wallet.balanceUpdate', {
+            address: data.address,
+            addressShort: data.address.substring(0, 16) + '...',
+            balance: data.balance,
+            previousBalance: data.previousBalance,
+            changeType: data.changeType,
+            amount: data.amount,
+            txCount: data.txCount,
+            miningRewards: data.miningRewards
+        });
+    }
+
+    /**
      * Get number of connected clients
      */
     getClientCount() {
