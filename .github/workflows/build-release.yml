@@ -1,0 +1,194 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.4.2)'
+        required: false
+        default: ''
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Birilium/wallet/package-lock.json
+
+      - name: Install main dependencies
+        working-directory: Birilium/wallet
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: Birilium/wallet/node-backend
+        run: npm ci
+
+      - name: Build Windows
+        working-directory: Birilium/wallet
+        run: npm run build:win
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-Windows-Setup
+          path: Birilium/wallet/distribution/*.exe
+          retention-days: 90
+
+      - name: Create portable ZIP
+        working-directory: Birilium/wallet/distribution
+        run: |
+          Compress-Archive -Path "win-unpacked\*" -DestinationPath "Birilium-Wallet-Portable-Win64.zip"
+
+      - name: Upload Windows portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-Windows-Portable
+          path: Birilium/wallet/distribution/*.zip
+          retention-days: 90
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Birilium/wallet/package-lock.json
+
+      - name: Install main dependencies
+        working-directory: Birilium/wallet
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: Birilium/wallet/node-backend
+        run: npm ci
+
+      - name: Build macOS (Apple Silicon)
+        working-directory: Birilium/wallet
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run build:mac:arm64
+
+      - name: Build macOS (Intel)
+        working-directory: Birilium/wallet
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run build:mac:x64
+
+      - name: Upload macOS DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-macOS-DMG
+          path: Birilium/wallet/distribution/*.dmg
+          retention-days: 90
+
+      - name: Upload macOS ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-macOS-ZIP
+          path: Birilium/wallet/distribution/*.zip
+          retention-days: 90
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Birilium/wallet/package-lock.json
+
+      - name: Install main dependencies
+        working-directory: Birilium/wallet
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: Birilium/wallet/node-backend
+        run: npm ci
+
+      - name: Build Linux
+        working-directory: Birilium/wallet
+        run: npm run build:linux
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-Linux-AppImage
+          path: Birilium/wallet/distribution/*.AppImage
+          retention-days: 90
+
+      - name: Upload Linux DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: Birilium-Wallet-Linux-DEB
+          path: Birilium/wallet/distribution/*.deb
+          retention-days: 90
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List downloaded files
+        run: find release-assets -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-assets/**/*.exe
+            release-assets/**/*.zip
+            release-assets/**/*.dmg
+            release-assets/**/*.AppImage
+            release-assets/**/*.deb
+          draft: false
+          generate_release_notes: true
+          body: |
+            ## Birilium Wallet Release
+
+            ### Downloads
+
+            **Windows:**
+            - `.exe` - Windows Installer (recommended)
+            - `-Portable-Win64.zip` - Portable version (no installation required)
+
+            **macOS:**
+            - `-arm64.dmg` - For Apple Silicon Macs (M1/M2/M3)
+            - `-x64.dmg` - For Intel Macs
+
+            **Linux:**
+            - `.AppImage` - Universal Linux (recommended)
+            - `.deb` - Debian/Ubuntu
+
+            ### Security Note
+            This release is built automatically from source code.
+            No environment files, credentials, or private keys are included.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
