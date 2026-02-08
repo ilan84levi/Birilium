@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.4.2)'
+        description: 'Version tag (e.g., v1.5.0)'
         required: false
         default: ''
 
@@ -41,23 +41,31 @@ jobs:
         working-directory: Birilium/wallet
         run: npm run build:win
 
+      - name: Copy installation instructions
+        working-directory: Birilium/wallet
+        run: |
+          Copy-Item "INSTALL-WINDOWS.txt" -Destination "distribution/README-INSTALL.txt"
+
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-Windows-Setup
-          path: Birilium/wallet/distribution/*.exe
+          path: |
+            Birilium/wallet/distribution/*.exe
+            Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
       - name: Create portable ZIP
         working-directory: Birilium/wallet/distribution
         run: |
+          Copy-Item "..\INSTALL-WINDOWS.txt" -Destination "win-unpacked\README-INSTALL.txt"
           Compress-Archive -Path "win-unpacked\*" -DestinationPath "Birilium-Wallet-Portable-Win64.zip"
 
       - name: Upload Windows portable
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-Windows-Portable
-          path: Birilium/wallet/distribution/*.zip
+          path: Birilium/wallet/distribution/Birilium-Wallet-Portable-Win64.zip
           retention-days: 90
 
   build-macos:
@@ -94,18 +102,26 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:mac:x64
 
-      - name: Upload macOS DMG artifacts
+      - name: Copy installation instructions
+        working-directory: Birilium/wallet
+        run: cp INSTALL-MACOS.txt distribution/README-INSTALL.txt
+
+      - name: Upload macOS ARM64 DMG
         uses: actions/upload-artifact@v4
         with:
-          name: Birilium-Wallet-macOS-DMG
-          path: Birilium/wallet/distribution/*.dmg
+          name: Birilium-Wallet-macOS-ARM64
+          path: |
+            Birilium/wallet/distribution/*arm64*.dmg
+            Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
-      - name: Upload macOS ZIP artifacts
+      - name: Upload macOS Intel DMG
         uses: actions/upload-artifact@v4
         with:
-          name: Birilium-Wallet-macOS-ZIP
-          path: Birilium/wallet/distribution/*.zip
+          name: Birilium-Wallet-macOS-Intel
+          path: |
+            Birilium/wallet/distribution/*x64*.dmg
+            Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
   build-linux:
@@ -134,18 +150,26 @@ jobs:
         working-directory: Birilium/wallet
         run: npm run build:linux
 
+      - name: Copy installation instructions
+        working-directory: Birilium/wallet
+        run: cp INSTALL-LINUX.txt distribution/README-INSTALL.txt
+
       - name: Upload Linux AppImage
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-Linux-AppImage
-          path: Birilium/wallet/distribution/*.AppImage
+          path: |
+            Birilium/wallet/distribution/*.AppImage
+            Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
       - name: Upload Linux DEB
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-Linux-DEB
-          path: Birilium/wallet/distribution/*.deb
+          path: |
+            Birilium/wallet/distribution/*.deb
+            Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
   release:
@@ -154,6 +178,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -171,27 +198,43 @@ jobs:
             release-assets/**/*.dmg
             release-assets/**/*.AppImage
             release-assets/**/*.deb
+            Birilium/wallet/INSTALL-WINDOWS.txt
+            Birilium/wallet/INSTALL-MACOS.txt
+            Birilium/wallet/INSTALL-LINUX.txt
           draft: false
           generate_release_notes: true
           body: |
-            ## Birilium Wallet Release
+            ## Birilium Wallet v${{ github.ref_name }}
 
             ### Downloads
 
-            **Windows:**
-            - `.exe` - Windows Installer (recommended)
-            - `-Portable-Win64.zip` - Portable version (no installation required)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | **Windows** | `*-Setup-*.exe` | Windows Installer (recommended) |
+            | **Windows** | `*-Portable-*.zip` | Portable version (no install needed) |
+            | **macOS ARM** | `*-arm64.dmg` | For Apple Silicon (M1/M2/M3/M4) |
+            | **macOS Intel** | `*-x64.dmg` | For Intel Macs |
+            | **Linux** | `*.AppImage` | Universal Linux (all distros) |
+            | **Linux** | `*.deb` | Debian/Ubuntu package |
 
-            **macOS:**
-            - `-arm64.dmg` - For Apple Silicon Macs (M1/M2/M3)
-            - `-x64.dmg` - For Intel Macs
+            ### Installation Instructions
+            - `INSTALL-WINDOWS.txt` - Windows installation guide
+            - `INSTALL-MACOS.txt` - macOS installation guide
+            - `INSTALL-LINUX.txt` - Linux installation guide
 
-            **Linux:**
-            - `.AppImage` - Universal Linux (recommended)
-            - `.deb` - Debian/Ubuntu
+            ### First Time Setup
+            1. Download the correct version for your system
+            2. Follow the installation instructions
+            3. Create a new wallet or import existing
+            4. **IMPORTANT:** Save your recovery phrase securely!
 
             ### Security Note
-            This release is built automatically from source code.
-            No environment files, credentials, or private keys are included.
+            - Built automatically from source code
+            - No credentials or private keys included
+            - Unsigned builds - follow OS instructions to allow
+
+            ### Support
+            - Website: https://birilium.com
+            - Email: biriliumcoin@gmail.com
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

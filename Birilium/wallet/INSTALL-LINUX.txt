@@ -1,0 +1,67 @@
+================================================================================
+                    BIRILIUM WALLET - LINUX INSTALLATION
+                              Version 1.5.0
+================================================================================
+
+WHICH VERSION DO I NEED?
+------------------------
+- AppImage: Works on ALL Linux distributions (recommended)
+- DEB: For Debian, Ubuntu, Linux Mint, Pop!_OS
+
+
+OPTION 1: AppImage (Universal - Recommended)
+--------------------------------------------
+1. Download the .AppImage file
+
+2. Make it executable:
+   chmod +x Birilium-Wallet-1.5.0.AppImage
+
+3. Run it:
+   ./Birilium-Wallet-1.5.0.AppImage
+
+That's it! No installation needed.
+
+
+OPTION 2: DEB Package (Debian/Ubuntu)
+-------------------------------------
+1. Download the .deb file
+
+2. Install via terminal:
+   sudo dpkg -i birilium-wallet_1.5.0_amd64.deb
+
+   OR double-click the .deb file to open Software Center
+
+3. Launch from Applications menu
+
+
+FIRST TIME SETUP
+----------------
+1. Create a new wallet OR import existing wallet
+2. Set a strong password
+3. IMPORTANT: Save your recovery phrase in a safe place!
+
+
+SECURITY TIPS
+-------------
+- NEVER share your private key or recovery phrase
+- Download only from official sources
+- Keep your recovery phrase written down offline
+
+
+TROUBLESHOOTING
+---------------
+- AppImage won't run? Make sure FUSE is installed:
+  sudo apt install fuse libfuse2
+
+- DEB dependencies missing?
+  sudo apt install -f
+
+- Data location: ~/.config/birilium-wallet
+
+
+SUPPORT
+-------
+Website: https://birilium.com
+Email: biriliumcoin@gmail.com
+
+================================================================================

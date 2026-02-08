@@ -1,0 +1,59 @@
+================================================================================
+                    BIRILIUM WALLET - macOS INSTALLATION
+                              Version 1.5.0
+================================================================================
+
+WHICH VERSION DO I NEED?
+------------------------
+- Apple Silicon (M1, M2, M3, M4): Download the "arm64" version
+- Intel Mac (older Macs): Download the "x64" version
+
+Not sure? Click Apple menu > About This Mac > Look for "Chip" or "Processor"
+
+
+INSTALLATION
+------------
+1. Open the .dmg file
+
+2. Drag "Birilium Wallet" to the Applications folder
+
+3. First time opening - IMPORTANT:
+
+   macOS will block the app because it's from an "unidentified developer"
+
+   To open it:
+   a) Right-click (or Control+click) on Birilium Wallet
+   b) Select "Open" from the menu
+   c) Click "Open" in the dialog that appears
+
+   You only need to do this once!
+
+
+FIRST TIME SETUP
+----------------
+1. Create a new wallet OR import existing wallet
+2. Set a strong password
+3. IMPORTANT: Save your recovery phrase in a safe place!
+
+
+SECURITY TIPS
+-------------
+- NEVER share your private key or recovery phrase
+- Download only from official sources
+- Keep your recovery phrase written down offline
+
+
+TROUBLESHOOTING
+---------------
+- "App is damaged" error? Open Terminal and run:
+  xattr -cr /Applications/Birilium\ Wallet.app
+
+- Data location: ~/Library/Application Support/birilium-wallet
+
+
+SUPPORT
+-------
+Website: https://birilium.com
+Email: biriliumcoin@gmail.com
+
+================================================================================
