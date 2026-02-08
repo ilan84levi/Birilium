@@ -1,18 +1,53 @@
-// Birilium Wallet - Browser/Electron Compatible Version
-// This version works in the Electron renderer process
+// Birilium Wallet - Renderer Process
+// Supports both legacy mode (nodeIntegration) and secure mode (contextIsolation)
 
-// Load crypto-js for encryption
-const CryptoJS = require('crypto-js');
-const QRCode = require('qrcode');
-const secp256k1 = require('@noble/secp256k1');
-const { sha256 } = require('@noble/hashes/sha2.js');
-const { hmac } = require('@noble/hashes/hmac.js');
-const { bytesToHex, hexToBytes, utf8ToBytes } = require('@noble/hashes/utils.js');
-const SHA256 = require('crypto-js/sha256');
+// Access secure wallet API from preload script (if available)
+const walletAPI = window.walletAPI;
 
-// Configure hash functions for secp256k1 v3
-secp256k1.hashes.sha256 = sha256;
-secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
+// Load crypto libraries - use preload API if context isolated, otherwise use require
+let CryptoJS, QRCode, secp256k1, sha256, hmac, bytesToHex, hexToBytes, utf8ToBytes, SHA256;
+
+if (walletAPI && walletAPI.crypto) {
+    // Secure mode: use preload API
+    console.log('✅ Running in secure mode with preload API');
+    SHA256 = (data) => ({ toString: () => walletAPI.crypto.sha256(String(data)) });
+    // CryptoJS functions mapped to preload API
+    CryptoJS = {
+        AES: {
+            encrypt: (data, password) => {
+                const result = walletAPI.crypto.encrypt(data, password);
+                return result.success ? result.encrypted : '';
+            },
+            decrypt: (encrypted, password) => {
+                const result = walletAPI.crypto.decrypt(encrypted, password);
+                return {
+                    toString: (encoding) => result.success ? result.data : ''
+                };
+            }
+        },
+        enc: { Utf8: 'utf8' }
+    };
+    QRCode = window.QRCode || { toCanvas: () => Promise.reject('QRCode not loaded') };
+} else {
+    // Legacy mode: use require (nodeIntegration enabled)
+    console.log('⚠️ Running in legacy mode with nodeIntegration');
+    CryptoJS = require('crypto-js');
+    QRCode = require('qrcode');
+    secp256k1 = require('@noble/secp256k1');
+    const hashes = require('@noble/hashes/sha2.js');
+    const hmacModule = require('@noble/hashes/hmac.js');
+    const utils = require('@noble/hashes/utils.js');
+    sha256 = hashes.sha256;
+    hmac = hmacModule.hmac;
+    bytesToHex = utils.bytesToHex;
+    hexToBytes = utils.hexToBytes;
+    utf8ToBytes = utils.utf8ToBytes;
+    SHA256 = require('crypto-js/sha256');
+
+    // Configure hash functions for secp256k1 v3
+    secp256k1.hashes.sha256 = sha256;
+    secp256k1.hashes.hmacSha256 = (key, ...msgs) => hmac(sha256, key, ...msgs);
+}
 
 class BiriliumBlockchainWallet {
     constructor() {
