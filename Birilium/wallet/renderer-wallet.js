@@ -796,7 +796,8 @@ class BiriliumBlockchainWallet {
                 throw new Error('Failed to get mining template');
             }
 
-            const template = await templateResponse.json();
+            const response = await templateResponse.json();
+            const template = response.template;
             this.addMiningLog(`Mining block #${template.index} (difficulty: ${template.difficulty})`);
 
             // Mine the block locally
