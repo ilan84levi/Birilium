@@ -234,6 +234,34 @@ const walletAPI = {
     // Hash function (for passwords, etc.)
     hash: (data) => {
       return crypto.createHash('sha256').update(data).digest('hex');
+    },
+
+    // SHA256 hash (for mining and transactions)
+    sha256: (data) => {
+      return crypto.createHash('sha256').update(data).digest('hex');
+    }
+  },
+
+  /**
+   * Fetch wrapper with timeout and retry
+   */
+  fetchWithRetry: async (url, options = {}, retries = 3, timeout = 30000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        if (i === retries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
     }
   },
 

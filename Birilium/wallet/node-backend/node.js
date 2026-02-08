@@ -1220,8 +1220,8 @@ app.get('/api/admin/audit', authenticateAdmin, async (req, res) => {
     });
 });
 
-// Rotate API key endpoint
-app.post('/api/admin/rotate-api-key', authenticateAdmin, audit.auditMiddleware('ROTATE_API_KEY'), async (req, res) => {
+// Rotate API key endpoint (CSRF protected)
+app.post('/api/admin/rotate-api-key', authenticateAdmin, security.csrfMiddleware, audit.auditMiddleware('ROTATE_API_KEY'), async (req, res) => {
     const newApiKey = auth.generateApiKey();
 
     res.json({
@@ -1231,8 +1231,8 @@ app.post('/api/admin/rotate-api-key', authenticateAdmin, audit.auditMiddleware('
     });
 });
 
-// Mempool purge endpoint
-app.post('/api/admin/mempool/purge', authenticateAdmin, requireAdmin, audit.auditMiddleware('MEMPOOL_PURGE'), async (req, res) => {
+// Mempool purge endpoint (CSRF protected)
+app.post('/api/admin/mempool/purge', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('MEMPOOL_PURGE'), async (req, res) => {
     const count = biriliumChain.pendingTransactions.length;
     biriliumChain.pendingTransactions = [];
 
@@ -1280,7 +1280,7 @@ app.get('/api/admin/connected-wallets', authenticateAdmin, async (req, res) => {
 // ========== ADMIN WALLET GENERATION ENDPOINT ==========
 
 // Admin-only wallet generation endpoint
-app.post('/api/admin/generate-wallet', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_GENERATE_WALLET'), async (req, res) => {
+app.post('/api/admin/generate-wallet', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('ADMIN_GENERATE_WALLET'), async (req, res) => {
     try {
         const crypto = require('crypto');
 
@@ -1313,7 +1313,7 @@ app.post('/api/admin/generate-wallet', authenticateAdmin, requireAdmin, audit.au
 });
 
 // Admin send coins endpoint - create coinbase transaction (mint new coins)
-app.post('/api/admin/send-coins', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_SEND_COINS'), async (req, res) => {
+app.post('/api/admin/send-coins', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('ADMIN_SEND_COINS'), async (req, res) => {
     try {
         const { toAddress, amount } = req.body;
 
@@ -1373,7 +1373,7 @@ app.post('/api/admin/send-coins', authenticateAdmin, requireAdmin, audit.auditMi
 });
 
 // Clean stale transactions from mempool
-app.post('/api/admin/clean-mempool', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_CLEAN_MEMPOOL'), async (req, res) => {
+app.post('/api/admin/clean-mempool', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('ADMIN_CLEAN_MEMPOOL'), async (req, res) => {
     try {
         const removed = biriliumChain.cleanStaleTransactions();
         res.json({
@@ -1390,7 +1390,7 @@ app.post('/api/admin/clean-mempool', authenticateAdmin, requireAdmin, audit.audi
 });
 
 // Force recalculate supply from blockchain
-app.post('/api/admin/recalculate-supply', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_RECALCULATE_SUPPLY'), async (req, res) => {
+app.post('/api/admin/recalculate-supply', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('ADMIN_RECALCULATE_SUPPLY'), async (req, res) => {
     try {
         const oldSupply = biriliumChain.currentSupply;
         const newSupply = biriliumChain.recalculateSupply();
@@ -1415,7 +1415,7 @@ app.post('/api/admin/recalculate-supply', authenticateAdmin, requireAdmin, audit
 // ========== ADMIN MINING ENDPOINT (NO SUBSCRIPTION REQUIRED) ==========
 
 // Admin-only mining endpoint - bypasses subscription checks
-app.post('/api/admin/mine', authenticateAdmin, requireAdmin, audit.auditMiddleware('ADMIN_MINE'), async (req, res) => {
+app.post('/api/admin/mine', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('ADMIN_MINE'), async (req, res) => {
     try {
         const { minerAddress } = req.body;
 
@@ -1859,7 +1859,7 @@ app.get('/api/admin/stats/downloads', authenticateAdmin, async (req, res) => {
 // ========== NEW ENHANCEMENT ENDPOINTS ==========
 
 // Logout endpoint - blacklists the current token
-app.post('/api/admin/auth/logout', authenticateAdmin, async (req, res) => {
+app.post('/api/admin/auth/logout', authenticateAdmin, security.csrfMiddleware, async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
         const token = authHeader && authHeader.startsWith('Bearer ')
@@ -1906,7 +1906,7 @@ app.get('/api/admin/cache/stats', authenticateAdmin, (req, res) => {
 });
 
 // Clear cache endpoint
-app.post('/api/admin/cache/clear', authenticateAdmin, requireAdmin, audit.auditMiddleware('CACHE_CLEAR'), (req, res) => {
+app.post('/api/admin/cache/clear', authenticateAdmin, security.csrfMiddleware, requireAdmin, audit.auditMiddleware('CACHE_CLEAR'), (req, res) => {
     cache.invalidateOnChange('chain_sync', {});
 
     res.json({
