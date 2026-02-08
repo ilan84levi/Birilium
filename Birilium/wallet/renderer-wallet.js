@@ -41,6 +41,7 @@ class BiriliumBlockchainWallet {
         this.subscriptionStartDate = null;
         this.isLocked = true;
         this.password = null;
+        this.isTransitioning = false; // Prevent race conditions in lock/unlock
         this.isNodeConnected = false;
         this.nodeConnectionRetries = 0;
         this.maxRetries = 10;
@@ -50,6 +51,7 @@ class BiriliumBlockchainWallet {
         this.currentHashrate = 0;
         this.totalHashCount = 0;
         this.miningStartTime = 0;
+        this.miningLoopTimeout = null; // Track timeout for cleanup
 
         // Check if terms were accepted
         this.checkTermsAcceptance();
@@ -341,8 +343,12 @@ class BiriliumBlockchainWallet {
         }
     }
 
-    // Unlock wallet
+    // Unlock wallet (with race condition protection)
     unlockWallet(password) {
+        if (this.isTransitioning) {
+            return { success: false, message: 'Please wait, wallet is processing...' };
+        }
+
         const savedWallet = localStorage.getItem('biriliumBlockchainWallet');
         if (!savedWallet) {
             return { success: false, message: 'No wallet found' };
@@ -353,34 +359,48 @@ class BiriliumBlockchainWallet {
             return { success: false, message: 'Wallet is not encrypted' };
         }
 
-        const decryptedKey = this.decryptPrivateKey(data.encryptedPrivateKey, password);
-        if (!decryptedKey) {
-            return { success: false, message: 'Incorrect password' };
+        this.isTransitioning = true;
+        try {
+            const decryptedKey = this.decryptPrivateKey(data.encryptedPrivateKey, password);
+            if (!decryptedKey) {
+                return { success: false, message: 'Incorrect password' };
+            }
+
+            this.walletAddress = data.address;
+            this.privateKey = decryptedKey;
+            this.hasSubscription = data.hasSubscription || false;
+            this.subscriptionId = data.subscriptionId || null;
+            this.subscriptionStartDate = data.subscriptionStartDate || null;
+            this.isLocked = false;
+            this.password = password;
+
+            this.hideUnlockScreen();
+            this.syncWithBlockchain();
+            this.updateUI();
+
+            return { success: true, message: 'Wallet unlocked successfully' };
+        } finally {
+            this.isTransitioning = false;
         }
-
-        this.walletAddress = data.address;
-        this.privateKey = decryptedKey;
-        this.hasSubscription = data.hasSubscription || false;
-        this.subscriptionId = data.subscriptionId || null;
-        this.subscriptionStartDate = data.subscriptionStartDate || null;
-        this.isLocked = false;
-        this.password = password;
-
-        this.hideUnlockScreen();
-        this.syncWithBlockchain();
-        this.updateUI();
-
-        return { success: true, message: 'Wallet unlocked successfully' };
     }
 
-    // Lock wallet
+    // Lock wallet (with race condition protection)
     lockWallet() {
-        this.privateKey = null;
-        this.password = null;
-        this.isLocked = true;
-        this.stopMining();
-        this.showUnlockScreen();
-        this.updateUI();
+        if (this.isTransitioning) {
+            return;
+        }
+
+        this.isTransitioning = true;
+        try {
+            this.stopMining();
+            this.privateKey = null;
+            this.password = null;
+            this.isLocked = true;
+            this.showUnlockScreen();
+            this.updateUI();
+        } finally {
+            this.isTransitioning = false;
+        }
     }
 
     // Disconnect wallet (clear all data)
@@ -704,16 +724,8 @@ class BiriliumBlockchainWallet {
             return;
         }
 
-        // ADMIN BYPASS: Check localStorage flag (must be set via developer console)
-        const isAdmin = localStorage.getItem('biriliumAdminMode') === 'true';
-
-        if (isAdmin) {
-            console.log('[ADMIN MODE] Unlimited mining enabled');
-            this.hasSubscription = true;
-        }
-
-        // Check free mining limit for non-premium users
-        if (!this.hasSubscription && !isAdmin) {
+        // Check free mining limit for non-premium users (subscription verified server-side)
+        if (!this.hasSubscription) {
             try {
                 const txResponse = await fetch(`${this.nodeUrl}/api/transactions/${this.walletAddress}`);
                 if (txResponse.ok) {
@@ -841,7 +853,7 @@ class BiriliumBlockchainWallet {
 
         // Continue mining loop
         if (this.isMining) {
-            setTimeout(() => this.mineLoop(), 100);
+            this.miningLoopTimeout = setTimeout(() => this.mineLoop(), 100);
         }
     }
 
@@ -922,6 +934,12 @@ class BiriliumBlockchainWallet {
         this.isMining = false;
         this.currentHashrate = 0;
 
+        // Clear pending timeout to prevent memory leaks
+        if (this.miningLoopTimeout) {
+            clearTimeout(this.miningLoopTimeout);
+            this.miningLoopTimeout = null;
+        }
+
         const totalElapsed = Date.now() - this.miningStartTime;
         const minutes = Math.floor(totalElapsed / 60000);
         const seconds = Math.floor((totalElapsed % 60000) / 1000);
@@ -931,7 +949,7 @@ class BiriliumBlockchainWallet {
         this.updateMiningUI();
     }
 
-    // Add entry to mining log
+    // Add entry to mining log (with memory management)
     addMiningLog(message) {
         const logContent = document.getElementById('miningLogContent');
         if (!logContent) return;
@@ -940,6 +958,12 @@ class BiriliumBlockchainWallet {
         entry.className = 'log-entry';
         entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
         logContent.appendChild(entry);
+
+        // Prevent memory leak: keep only last 200 log entries
+        while (logContent.children.length > 200) {
+            logContent.removeChild(logContent.firstChild);
+        }
+
         logContent.scrollTop = logContent.scrollHeight;
     }
 
@@ -975,8 +999,13 @@ class BiriliumBlockchainWallet {
             return { success: false, message: 'Amount must be greater than 0' };
         }
 
-        if (!recipientAddress || recipientAddress.length < 10) {
-            return { success: false, message: 'Invalid recipient address' };
+        // Validate address format (uncompressed: 130 hex chars starting with 04, compressed: 66 hex chars starting with 02/03)
+        const isValidAddress = recipientAddress && (
+            (recipientAddress.length === 130 && recipientAddress.startsWith('04') && /^[0-9a-fA-F]+$/.test(recipientAddress)) ||
+            (recipientAddress.length === 66 && (recipientAddress.startsWith('02') || recipientAddress.startsWith('03')) && /^[0-9a-fA-F]+$/.test(recipientAddress))
+        );
+        if (!isValidAddress) {
+            return { success: false, message: 'Invalid recipient address. Must be a valid public key (130 or 66 hex characters)' };
         }
 
         if (recipientAddress === this.walletAddress) {
@@ -1611,10 +1640,21 @@ class BiriliumBlockchainWallet {
             sendForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 console.log('Send form submitted');
-                const recipient = document.getElementById('recipientAddress').value;
-                const amount = parseFloat(document.getElementById('sendAmount').value);
+                const recipient = document.getElementById('recipientAddress').value.trim();
+                const amountStr = document.getElementById('sendAmount').value.trim();
                 const note = document.getElementById('sendNote').value;
 
+                // Validate inputs before processing
+                if (!recipient) {
+                    alert('Please enter a recipient address');
+                    return;
+                }
+                if (!amountStr || isNaN(parseFloat(amountStr))) {
+                    alert('Please enter a valid amount');
+                    return;
+                }
+
+                const amount = parseFloat(amountStr);
                 const result = await this.sendCoins(recipient, amount, note);
                 alert(result.message);
 

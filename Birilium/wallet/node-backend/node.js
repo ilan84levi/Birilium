@@ -480,11 +480,13 @@ app.get('/api/mining/template', (req, res) => {
             });
         }
 
-        // Validate address format
-        if (!minerAddress.startsWith('04') || minerAddress.length < 50) {
+        // Validate address format (uncompressed: 130 hex chars starting with 04, compressed: 66 hex chars starting with 02/03)
+        const isValidUncompressed = minerAddress.startsWith('04') && minerAddress.length === 130 && /^[0-9a-fA-F]+$/.test(minerAddress);
+        const isValidCompressed = (minerAddress.startsWith('02') || minerAddress.startsWith('03')) && minerAddress.length === 66 && /^[0-9a-fA-F]+$/.test(minerAddress);
+        if (!isValidUncompressed && !isValidCompressed) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid miner address format'
+                error: 'Invalid miner address format. Must be a valid public key (130 or 66 hex characters)'
             });
         }
 
@@ -605,10 +607,10 @@ app.post('/api/mining/submit', async (req, res) => {
             });
         }
 
-        // Validate timestamp (not too old, not in future)
+        // Validate timestamp (not too old, not in future) - tightened for security
         const now = Date.now();
-        const maxAge = 5 * 60 * 1000; // 5 minutes
-        const maxFuture = 2 * 60 * 1000; // 2 minutes
+        const maxAge = 2 * 60 * 1000; // 2 minutes (tightened from 5)
+        const maxFuture = 60 * 1000; // 1 minute (tightened from 2)
         if (block.timestamp < now - maxAge) {
             return res.status(400).json({
                 success: false,
