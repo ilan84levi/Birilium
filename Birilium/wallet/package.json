@@ -2,6 +2,7 @@
   "name": "birilium-wallet",
   "version": "1.4.2",
   "description": "Birilium Cryptocurrency Desktop Wallet",
+  "homepage": "https://birilium.com",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -20,7 +21,10 @@
     "birilium",
     "blockchain"
   ],
-  "author": "Birilium Team",
+  "author": {
+    "name": "Birilium Team",
+    "email": "biriliumcoin@gmail.com"
+  },
   "license": "MIT",
   "devDependencies": {
     "@electron/notarize": "^2.3.0",
@@ -138,7 +142,8 @@
         "deb"
       ],
       "category": "Finance",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "maintainer": "Birilium Team <biriliumcoin@gmail.com>"
     }
   },
   "dependencies": {
