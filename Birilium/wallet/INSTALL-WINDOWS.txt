@@ -1,0 +1,52 @@
+================================================================================
+                    BIRILIUM WALLET - WINDOWS INSTALLATION
+                              Version 1.5.0
+================================================================================
+
+OPTION 1: INSTALLER (Recommended)
+---------------------------------
+1. Double-click "Birilium-Wallet-Setup-1.5.0.exe"
+
+2. If Windows shows "Windows protected your PC":
+   - Click "More info"
+   - Click "Run anyway"
+
+3. Follow the installer wizard
+
+4. Launch from Desktop or Start Menu
+
+
+OPTION 2: PORTABLE VERSION
+--------------------------
+1. Extract the ZIP file to any folder
+2. Open the folder and double-click "Birilium Wallet.exe"
+3. If Windows SmartScreen appears, click "More info" then "Run anyway"
+
+
+FIRST TIME SETUP
+----------------
+1. Create a new wallet OR import existing wallet
+2. Set a strong password
+3. IMPORTANT: Save your recovery phrase in a safe place!
+
+
+SECURITY TIPS
+-------------
+- NEVER share your private key or recovery phrase
+- Download only from official sources
+- Keep your recovery phrase written down offline
+
+
+TROUBLESHOOTING
+---------------
+- App won't start? Try "Run as Administrator"
+- Antivirus blocking? Add exception for Birilium Wallet
+- Data location: %APPDATA%\birilium-wallet
+
+
+SUPPORT
+-------
+Website: https://birilium.com
+Email: biriliumcoin@gmail.com
+
+================================================================================
