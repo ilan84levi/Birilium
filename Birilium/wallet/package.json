@@ -1,6 +1,6 @@
 {
   "name": "birilium-wallet",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Birilium Cryptocurrency Desktop Wallet",
   "homepage": "https://birilium.com",
   "main": "main.js",

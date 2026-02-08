@@ -262,11 +262,13 @@ function createWindow() {
     width: 1400,
     height: 900,
     webPreferences: {
-      // TEMPORARY FIX: Enable nodeIntegration for renderer-wallet.js to work
-      // TODO: Refactor renderer to use only preload API
-      nodeIntegration: true,             // TEMP: Enabled for crypto libraries
-      contextIsolation: false,           // TEMP: Disabled for compatibility
-      sandbox: false,                    // TEMP: Disabled for node access
+      // SECURITY WARNING: These settings are temporarily insecure
+      // TODO: Enable contextIsolation and disable nodeIntegration
+      // This requires refactoring renderer-wallet.js to use preload.js exclusively
+      // Current architecture requires Node.js APIs for crypto operations
+      nodeIntegration: true,             // SECURITY: Should be false
+      contextIsolation: false,           // SECURITY: Should be true
+      sandbox: false,                    // SECURITY: Should be true
       enableRemoteModule: false,         // Disable legacy remote module
       preload: path.join(__dirname, 'preload.js'),  // Secure bridge
       webSecurity: true,                 // Enable web security
@@ -306,14 +308,16 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Handle admin panel access via keyboard shortcut
-  // Press CTRL+ALT+A to access admin panel
-  require('electron').globalShortcut.register('Control+Alt+A', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const adminUrl = 'http://localhost:3001/api/admin';
-      require('electron').shell.openExternal(adminUrl);
-    }
-  });
+  // Handle admin panel access via keyboard shortcut (development only for security)
+  // Press CTRL+ALT+A to access admin panel - ONLY in development mode
+  if (process.env.NODE_ENV === 'development' || process.env.BIRILIUM_ADMIN === 'true') {
+    require('electron').globalShortcut.register('Control+Alt+A', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const adminUrl = 'http://localhost:3001/api/admin';
+        require('electron').shell.openExternal(adminUrl);
+      }
+    });
+  }
 
   // Disable F12/DevTools in production, but allow CTRL+Shift+I for development
   // Users can still open console with F12 if they really want, but it won't auto-open
