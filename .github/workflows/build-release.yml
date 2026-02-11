@@ -96,34 +96,43 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:mac:arm64
 
+      - name: Rename ARM64 build
+        working-directory: Birilium/wallet/distribution
+        run: |
+          echo "After ARM64 build:"
+          ls -la
+          # Find and rename arm64 DMG
+          for f in *.dmg; do
+            if [[ "$f" == *"arm64"* ]]; then
+              cp "$f" "Birilium-Wallet-macOS-ARM64.dmg"
+              echo "Renamed $f to Birilium-Wallet-macOS-ARM64.dmg"
+            fi
+          done
+
       - name: Build macOS (Intel)
         working-directory: Birilium/wallet
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:mac:x64
 
+      - name: Rename Intel build
+        working-directory: Birilium/wallet/distribution
+        run: |
+          echo "After Intel build:"
+          ls -la
+          # Find and rename x64 DMG (may not have x64 in name)
+          for f in *.dmg; do
+            if [[ "$f" != *"arm64"* ]] && [[ "$f" != *"ARM64"* ]]; then
+              cp "$f" "Birilium-Wallet-macOS-Intel.dmg"
+              echo "Renamed $f to Birilium-Wallet-macOS-Intel.dmg"
+            fi
+          done
+          echo "Final files:"
+          ls -la *.dmg
+
       - name: Copy installation instructions
         working-directory: Birilium/wallet
         run: cp INSTALL-MACOS.txt distribution/README-INSTALL.txt
-
-      - name: List and rename distribution files
-        working-directory: Birilium/wallet/distribution
-        run: |
-          echo "Files before rename:"
-          ls -la *.dmg || true
-          # Rename files to have clear architecture names
-          for f in *.dmg; do
-            if [[ "$f" == *"arm64"* ]]; then
-              mv "$f" "Birilium-Wallet-macOS-ARM64.dmg" 2>/dev/null || true
-            elif [[ "$f" == *"x64"* ]]; then
-              mv "$f" "Birilium-Wallet-macOS-Intel.dmg" 2>/dev/null || true
-            elif [[ ! "$f" == *"ARM64"* ]] && [[ ! "$f" == *"Intel"* ]]; then
-              # If no arch suffix, assume it's Intel (x64 is often default)
-              mv "$f" "Birilium-Wallet-macOS-Intel.dmg" 2>/dev/null || true
-            fi
-          done
-          echo "Files after rename:"
-          ls -la *.dmg || true
 
       - name: Upload macOS ARM64 DMG
         uses: actions/upload-artifact@v4
@@ -217,9 +226,7 @@ jobs:
             release-assets/**/*.dmg
             release-assets/**/*.AppImage
             release-assets/**/*.deb
-            Birilium/wallet/INSTALL-WINDOWS.txt
-            Birilium/wallet/INSTALL-MACOS.txt
-            Birilium/wallet/INSTALL-LINUX.txt
+            release-assets/**/*.txt
           draft: false
           generate_release_notes: true
           body: |
