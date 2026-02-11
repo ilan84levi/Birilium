@@ -106,12 +106,31 @@ jobs:
         working-directory: Birilium/wallet
         run: cp INSTALL-MACOS.txt distribution/README-INSTALL.txt
 
+      - name: List and rename distribution files
+        working-directory: Birilium/wallet/distribution
+        run: |
+          echo "Files before rename:"
+          ls -la *.dmg || true
+          # Rename files to have clear architecture names
+          for f in *.dmg; do
+            if [[ "$f" == *"arm64"* ]]; then
+              mv "$f" "Birilium-Wallet-macOS-ARM64.dmg" 2>/dev/null || true
+            elif [[ "$f" == *"x64"* ]]; then
+              mv "$f" "Birilium-Wallet-macOS-Intel.dmg" 2>/dev/null || true
+            elif [[ ! "$f" == *"ARM64"* ]] && [[ ! "$f" == *"Intel"* ]]; then
+              # If no arch suffix, assume it's Intel (x64 is often default)
+              mv "$f" "Birilium-Wallet-macOS-Intel.dmg" 2>/dev/null || true
+            fi
+          done
+          echo "Files after rename:"
+          ls -la *.dmg || true
+
       - name: Upload macOS ARM64 DMG
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-macOS-ARM64
           path: |
-            Birilium/wallet/distribution/*arm64*.dmg
+            Birilium/wallet/distribution/Birilium-Wallet-macOS-ARM64.dmg
             Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
@@ -120,7 +139,7 @@ jobs:
         with:
           name: Birilium-Wallet-macOS-Intel
           path: |
-            Birilium/wallet/distribution/*x64*.dmg
+            Birilium/wallet/distribution/Birilium-Wallet-macOS-Intel.dmg
             Birilium/wallet/distribution/README-INSTALL.txt
           retention-days: 90
 
