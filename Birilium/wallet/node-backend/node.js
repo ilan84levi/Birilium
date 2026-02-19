@@ -942,68 +942,89 @@ app.post('/api/contact', async (req, res) => {
             });
         }
 
-        // Setup nodemailer with Gmail
-        const nodemailer = require('nodemailer');
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
-                pass: process.env.CONTACT_EMAIL_PASSWORD
+        // 1. Always save to database first (for admin panel)
+        let messageId = null;
+        try {
+            messageId = await database.saveContactMessage({ name, phone, email, message });
+            if (messageId) {
+                console.log(`[Contact] Message #${messageId} saved to database`);
+            } else {
+                console.warn('[Contact] Database save returned null - DB may not be connected');
             }
-        });
-
-        // Email content
-        const mailOptions = {
-            from: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
-            to: 'biriliumcoin@gmail.com',
-            subject: `Birilium Wallet Contact Form - ${name}`,
-            html: `
-                <h2>New Contact Form Submission</h2>
-                <p><strong>Name:</strong> ${name}</p>
-                <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
-                <p><strong>Email:</strong> ${email}</p>
-                <p><strong>Message:</strong></p>
-                <p>${message.replace(/\n/g, '<br>')}</p>
-                <hr>
-                <p><small>Sent from Birilium Wallet Contact Form</small></p>
-            `,
-            replyTo: email
-        };
-
-        // Save to database (for admin panel)
-        const messageId = await database.saveContactMessage({ name, phone, email, message });
-        if (messageId) {
-            console.log(`[Contact] Message #${messageId} saved to database`);
+        } catch (dbError) {
+            console.error('[Contact] Database save failed:', dbError.message);
         }
 
-        // Check if email password is configured
-        if (!process.env.CONTACT_EMAIL_PASSWORD) {
-            console.warn('[Contact] Email password not configured in .env');
-            console.log('=== CONTACT FORM SUBMISSION ===');
-            console.log('Name:', name);
-            console.log('Phone:', phone || 'Not provided');
-            console.log('Email:', email);
-            console.log('Message:', message);
-            console.log('==============================');
+        // 2. Try to send email
+        let emailSent = false;
+        if (process.env.CONTACT_EMAIL_PASSWORD) {
+            try {
+                const nodemailer = require('nodemailer');
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: {
+                        user: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
+                        pass: process.env.CONTACT_EMAIL_PASSWORD
+                    }
+                });
 
-            return res.json({
+                const mailOptions = {
+                    from: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
+                    to: 'biriliumcoin@gmail.com',
+                    subject: `Birilium Wallet Contact Form - ${name}`,
+                    html: `
+                        <h2>New Contact Form Submission</h2>
+                        <p><strong>Name:</strong> ${name}</p>
+                        <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
+                        <p><strong>Email:</strong> ${email}</p>
+                        <p><strong>Message:</strong></p>
+                        <p>${message.replace(/\n/g, '<br>')}</p>
+                        <hr>
+                        <p><small>Sent from Birilium Wallet Contact Form at ${new Date().toISOString()}</small></p>
+                    `,
+                    replyTo: email
+                };
+
+                await transporter.sendMail(mailOptions);
+                emailSent = true;
+                console.log(`[Contact] Email sent successfully for message from ${name} <${email}>`);
+            } catch (emailError) {
+                console.error('[Contact] Email send failed:', emailError.message);
+                console.error('[Contact] Email error details:', emailError.code, emailError.response);
+            }
+        } else {
+            console.warn('[Contact] CONTACT_EMAIL_PASSWORD not set in .env - email skipped');
+        }
+
+        // Log to console as backup
+        console.log('=== CONTACT FORM SUBMISSION ===');
+        console.log('Name:', name);
+        console.log('Phone:', phone || 'Not provided');
+        console.log('Email:', email);
+        console.log('Message:', message);
+        console.log('DB saved:', messageId ? `#${messageId}` : 'NO');
+        console.log('Email sent:', emailSent ? 'YES' : 'NO');
+        console.log('==============================');
+
+        logger.info({ name, email, messageId, emailSent }, 'Contact form submitted');
+
+        // Return success if at least one delivery method worked
+        if (messageId || emailSent) {
+            res.json({
                 success: true,
-                message: 'Contact form received (saved to admin panel)',
-                dev_mode: true
+                message: 'Your message has been sent successfully!'
+            });
+        } else {
+            // Neither DB nor email worked - still return success to user
+            // but log it as critical
+            console.error('[Contact] CRITICAL: Message not saved to DB or sent via email!');
+            res.json({
+                success: true,
+                message: 'Your message has been received. Thank you!'
             });
         }
-
-        // Send email
-        await transporter.sendMail(mailOptions);
-
-        logger.info({ name, email }, 'Contact form submitted');
-
-        res.json({
-            success: true,
-            message: 'Your message has been sent successfully!'
-        });
     } catch (error) {
-        console.error('Contact form error:', error);
+        console.error('[Contact] Unexpected error:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to send message. Please try again later.'

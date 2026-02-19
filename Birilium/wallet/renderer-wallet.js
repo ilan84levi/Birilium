@@ -2007,37 +2007,64 @@ document.addEventListener('DOMContentLoaded', () => {
             contactStatus.classList.remove('hidden', 'success', 'error');
             contactStatus.textContent = 'Sending message...';
 
-            try {
-                // Send contact form data to backend (use live server, not localhost)
-                const response = await fetch('https://api.birilium.com/api/contact', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name,
-                        phone,
-                        email,
-                        message,
-                        timestamp: Date.now()
-                    })
-                });
+            const payload = JSON.stringify({
+                name,
+                phone,
+                email,
+                message,
+                timestamp: Date.now()
+            });
 
-                const result = await response.json();
+            const fetchOptions = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            };
 
-                if (result.success) {
-                    contactStatus.classList.add('success');
-                    contactStatus.textContent = 'Message sent successfully! We\'ll get back to you soon.';
-                    contactForm.reset();
-                    setTimeout(() => {
-                        contactModal.classList.add('hidden');
-                        contactStatus.classList.add('hidden');
-                    }, 3000);
-                } else {
-                    throw new Error(result.error || 'Failed to send message');
+            // Build list of URLs to try: wallet's connected node first, then api.birilium.com
+            const urls = [];
+            if (window.wallet && window.wallet.nodeUrl) {
+                urls.push(window.wallet.nodeUrl + '/api/contact');
+            }
+            urls.push('https://api.birilium.com/api/contact');
+            // Deduplicate
+            const uniqueUrls = [...new Set(urls)];
+
+            let lastError = null;
+            let sent = false;
+
+            for (const url of uniqueUrls) {
+                try {
+                    console.log('[Contact] Trying:', url);
+                    const response = await fetch(url, {
+                        ...fetchOptions,
+                        signal: AbortSignal.timeout(10000)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        sent = true;
+                        contactStatus.classList.add('success');
+                        contactStatus.textContent = 'Message sent successfully! We\'ll get back to you soon.';
+                        contactForm.reset();
+                        setTimeout(() => {
+                            contactModal.classList.add('hidden');
+                            contactStatus.classList.add('hidden');
+                        }, 3000);
+                        break;
+                    } else {
+                        lastError = result.error || 'Server rejected the message';
+                        console.warn('[Contact] Server error from', url, ':', lastError);
+                    }
+                } catch (error) {
+                    lastError = error.message;
+                    console.warn('[Contact] Failed to reach', url, ':', error.message);
                 }
-            } catch (error) {
-                console.error('Contact form error:', error);
+            }
+
+            if (!sent) {
+                console.error('Contact form error: all endpoints failed. Last error:', lastError);
                 contactStatus.classList.add('error');
                 contactStatus.textContent = 'Failed to send message. Please try again or email us directly at biriliumcoin@gmail.com';
             }
