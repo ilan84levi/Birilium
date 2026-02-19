@@ -970,10 +970,15 @@ app.post('/api/contact', async (req, res) => {
             replyTo: email
         };
 
+        // Save to database (for admin panel)
+        const messageId = await database.saveContactMessage({ name, phone, email, message });
+        if (messageId) {
+            console.log(`[Contact] Message #${messageId} saved to database`);
+        }
+
         // Check if email password is configured
         if (!process.env.CONTACT_EMAIL_PASSWORD) {
             console.warn('[Contact] Email password not configured in .env');
-            // Log to console for development purposes
             console.log('=== CONTACT FORM SUBMISSION ===');
             console.log('Name:', name);
             console.log('Phone:', phone || 'Not provided');
@@ -983,7 +988,7 @@ app.post('/api/contact', async (req, res) => {
 
             return res.json({
                 success: true,
-                message: 'Contact form received (email not configured, logged to console)',
+                message: 'Contact form received (saved to admin panel)',
                 dev_mode: true
             });
         }
@@ -1913,6 +1918,39 @@ app.post('/api/admin/cache/clear', authenticateAdmin, security.csrfMiddleware, r
         success: true,
         message: 'Cache cleared successfully'
     });
+});
+
+// ========== ADMIN CONTACT MESSAGES ==========
+
+// Get contact messages (admin only)
+app.get('/api/admin/contacts', authenticateAdmin, async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+        const messages = await database.getContactMessages(limit, offset);
+        const unreadCount = await database.getUnreadContactCount();
+
+        res.json({
+            success: true,
+            messages,
+            unreadCount,
+            total: messages.length
+        });
+    } catch (error) {
+        console.error('Error fetching contact messages:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch messages' });
+    }
+});
+
+// Mark contact message as read (admin only)
+app.post('/api/admin/contacts/:id/read', authenticateAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        await database.markContactRead(id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to mark as read' });
+    }
 });
 
 // Password validation endpoint (for frontend password strength check)

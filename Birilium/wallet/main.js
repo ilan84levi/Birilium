@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let nodeProcess = null;
@@ -336,6 +337,94 @@ function createWindow() {
   });
 }
 
+// ============== AUTO-UPDATER ==============
+function setupAutoUpdater() {
+  // Don't auto-download — let user choose
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  function sendUpdateStatus(data) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-status', data);
+    }
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+    sendUpdateStatus({ status: 'checking' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    sendUpdateStatus({
+      status: 'available',
+      version: info.version,
+      releaseDate: info.releaseDate
+    });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('No updates available. Current version:', app.getVersion());
+    sendUpdateStatus({ status: 'not-available', version: app.getVersion() });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus({
+      status: 'downloading',
+      percent: Math.round(progress.percent),
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    sendUpdateStatus({ status: 'downloaded', version: info.version });
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error('Auto-updater error:', error.message);
+    sendUpdateStatus({ status: 'error', message: error.message });
+  });
+
+  // IPC handlers for renderer
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { success: true, version: result?.updateInfo?.version };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('download-update', async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('install-update', () => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
+  // Auto-check for updates 5 seconds after launch (only in packaged builds)
+  if (app.isPackaged) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.log('Auto update check failed:', err.message);
+      });
+    }, 5000);
+  }
+}
+
 // IPC handlers
 ipcMain.handle('get-node-status', () => {
   return {
@@ -363,6 +452,9 @@ app.on('ready', async () => {
 
   // Create window first so we can send debug messages to it
   createWindow();
+
+  // Setup auto-updater
+  setupAutoUpdater();
 
   // Wait a bit for window to load before starting node
   await new Promise(resolve => setTimeout(resolve, 1000));

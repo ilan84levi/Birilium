@@ -16,6 +16,133 @@ body {
     height: 100vh;
 }
 
+/* ============== AUTO-UPDATE BANNER ============== */
+.update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10002;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 14px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease;
+}
+
+.update-banner.status-available {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.update-banner.status-downloading {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+}
+
+.update-banner.status-downloaded {
+    background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+}
+
+.update-banner.status-error {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.update-banner-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.update-banner-message {
+    flex: 1;
+    font-weight: 500;
+}
+
+.update-progress-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    max-width: 300px;
+}
+
+.update-progress-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.update-progress-fill {
+    height: 100%;
+    background: white;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.update-progress-text {
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 36px;
+    text-align: right;
+}
+
+.update-btn {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.update-btn-primary {
+    background: white;
+    color: #667eea;
+}
+
+.update-btn-primary:hover {
+    background: #f0f0f0;
+}
+
+.update-btn-success {
+    background: white;
+    color: #28a745;
+}
+
+.update-btn-success:hover {
+    background: #f0f0f0;
+}
+
+.update-btn-dismiss {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.update-btn-dismiss:hover {
+    color: white;
+}
+
+[data-theme="dark"] .update-banner {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
 /* Sidebar Styles */
 .sidebar {
     width: 280px;

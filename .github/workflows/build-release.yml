@@ -120,6 +120,7 @@ jobs:
           name: Birilium-Wallet-Windows-Setup
           path: |
             Birilium/wallet/distribution/*.exe
+            Birilium/wallet/distribution/*.yml
             Birilium/wallet/distribution/INSTALL-WINDOWS.txt
           retention-days: 5
 
@@ -209,6 +210,7 @@ jobs:
           name: Birilium-Wallet-macOS-ARM64
           path: |
             Birilium/wallet/distribution/Birilium-Wallet-macOS-ARM64.dmg
+            Birilium/wallet/distribution/*.yml
             Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
 
@@ -257,6 +259,7 @@ jobs:
           name: Birilium-Wallet-Linux-AppImage
           path: |
             Birilium/wallet/distribution/*.AppImage
+            Birilium/wallet/distribution/*.yml
             Birilium/wallet/distribution/INSTALL-LINUX.txt
           retention-days: 5
 
@@ -295,6 +298,7 @@ jobs:
             release-assets/**/*.AppImage
             release-assets/**/*.deb
             release-assets/**/*.txt
+            release-assets/**/*.yml
           draft: false
           generate_release_notes: true
           body: |

@@ -107,11 +107,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "category": "public.app-category.finance",
@@ -144,15 +150,21 @@
       "category": "Finance",
       "icon": "build/icon.png",
       "maintainer": "Birilium Team <biriliumcoin@gmail.com>"
-    }
+    },
+    "publish": [{
+      "provider": "github",
+      "owner": "ilan84levi",
+      "repo": "Birilium"
+    }]
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
     "argon2": "^0.44.0",
     "bip32": "^5.0.0",
     "bip39": "^3.1.0",
     "crypto-js": "^4.2.0",
-    "@noble/secp256k1": "^3.0.0",
+    "electron-updater": "^6.8.3",
     "qrcode": "^1.5.4",
     "tiny-secp256k1": "^2.2.4"
   }

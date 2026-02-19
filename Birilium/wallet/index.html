@@ -20,6 +20,23 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Auto-Update Banner -->
+    <div id="updateBanner" class="update-banner hidden">
+        <div class="update-banner-content">
+            <span class="update-banner-icon" id="updateIcon">&#x2B06;</span>
+            <span class="update-banner-message" id="updateMessage">A new version is available!</span>
+            <div class="update-progress-container hidden" id="updateProgressContainer">
+                <div class="update-progress-bar">
+                    <div class="update-progress-fill" id="updateProgressFill" style="width: 0%"></div>
+                </div>
+                <span class="update-progress-text" id="updateProgressText">0%</span>
+            </div>
+            <button class="update-btn update-btn-primary hidden" id="updateDownloadBtn">Update Now</button>
+            <button class="update-btn update-btn-success hidden" id="updateInstallBtn">Restart &amp; Install</button>
+            <button class="update-btn-dismiss" id="updateDismissBtn">&times;</button>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Left Sidebar Navigation -->
         <div class="sidebar">

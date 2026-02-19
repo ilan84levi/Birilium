@@ -119,6 +119,19 @@ class DatabaseManager {
                 )
             `);
 
+            // Contact messages table
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS contact_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    phone TEXT,
+                    email TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    read INTEGER DEFAULT 0,
+                    createdAt INTEGER NOT NULL
+                )
+            `);
+
             console.log('✓ Database tables created');
         } catch (error) {
             console.error('Error creating tables:', error.message);
@@ -147,6 +160,10 @@ class DatabaseManager {
             this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics(event)');
             this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_wallet ON analytics(walletAddress)');
             this.db.exec('CREATE INDEX IF NOT EXISTS idx_analytics_timestamp ON analytics(timestamp DESC)');
+
+            // Index on contact messages
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_contact_created ON contact_messages(createdAt DESC)');
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_contact_read ON contact_messages(read)');
 
             console.log('✓ Database indexes created');
         } catch (error) {
@@ -373,6 +390,70 @@ class DatabaseManager {
         } catch (error) {
             console.error('Error getting subscriptions:', error.message);
             return [];
+        }
+    }
+
+    async saveContactMessage(contact) {
+        if (!this.isConnected) return null;
+
+        try {
+            const stmt = this.db.prepare(`
+                INSERT INTO contact_messages (name, phone, email, message, read, createdAt)
+                VALUES (?, ?, ?, ?, 0, ?)
+            `);
+
+            const result = stmt.run(
+                contact.name,
+                contact.phone || null,
+                contact.email,
+                contact.message,
+                Date.now()
+            );
+
+            return result.lastInsertRowid;
+        } catch (error) {
+            console.error('Error saving contact message:', error.message);
+            return null;
+        }
+    }
+
+    async getContactMessages(limit = 50, offset = 0) {
+        if (!this.isConnected) return [];
+
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM contact_messages
+                ORDER BY createdAt DESC
+                LIMIT ? OFFSET ?
+            `);
+
+            return stmt.all(limit, offset);
+        } catch (error) {
+            console.error('Error fetching contact messages:', error.message);
+            return [];
+        }
+    }
+
+    async getUnreadContactCount() {
+        if (!this.isConnected) return 0;
+
+        try {
+            const stmt = this.db.prepare('SELECT COUNT(*) as count FROM contact_messages WHERE read = 0');
+            return stmt.get().count;
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    async markContactRead(id) {
+        if (!this.isConnected) return false;
+
+        try {
+            const stmt = this.db.prepare('UPDATE contact_messages SET read = 1 WHERE id = ?');
+            stmt.run(id);
+            return true;
+        } catch (error) {
+            return false;
         }
     }
 

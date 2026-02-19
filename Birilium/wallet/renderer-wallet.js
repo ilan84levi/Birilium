@@ -1849,6 +1849,111 @@ if (typeof require !== 'undefined') {
         ipcRenderer.on('node-error', (event, message) => {
             console.error('[NODE ERROR]', message);
         });
+
+        // ============== AUTO-UPDATE UI ==============
+        const updateBanner = document.getElementById('updateBanner');
+        const updateMessage = document.getElementById('updateMessage');
+        const updateIcon = document.getElementById('updateIcon');
+        const updateDownloadBtn = document.getElementById('updateDownloadBtn');
+        const updateInstallBtn = document.getElementById('updateInstallBtn');
+        const updateDismissBtn = document.getElementById('updateDismissBtn');
+        const updateProgressContainer = document.getElementById('updateProgressContainer');
+        const updateProgressFill = document.getElementById('updateProgressFill');
+        const updateProgressText = document.getElementById('updateProgressText');
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function handleUpdateStatus(data) {
+            if (!updateBanner) return;
+
+            // Reset visibility
+            updateDownloadBtn.classList.add('hidden');
+            updateInstallBtn.classList.add('hidden');
+            updateProgressContainer.classList.add('hidden');
+
+            // Remove all status classes
+            updateBanner.className = 'update-banner';
+
+            switch (data.status) {
+                case 'checking':
+                    // Don't show banner for checking
+                    break;
+
+                case 'available':
+                    updateBanner.classList.remove('hidden');
+                    updateBanner.classList.add('status-available');
+                    updateIcon.innerHTML = '&#x2B06;';
+                    updateMessage.textContent = `A new version (v${data.version}) is available!`;
+                    updateDownloadBtn.classList.remove('hidden');
+                    break;
+
+                case 'downloading':
+                    updateBanner.classList.remove('hidden');
+                    updateBanner.classList.add('status-downloading');
+                    updateIcon.innerHTML = '&#x2B07;';
+                    const speed = formatBytes(data.bytesPerSecond) + '/s';
+                    const transferred = formatBytes(data.transferred);
+                    const total = formatBytes(data.total);
+                    updateMessage.textContent = `Downloading update... ${transferred} / ${total} (${speed})`;
+                    updateProgressContainer.classList.remove('hidden');
+                    updateProgressFill.style.width = data.percent + '%';
+                    updateProgressText.textContent = data.percent + '%';
+                    break;
+
+                case 'downloaded':
+                    updateBanner.classList.remove('hidden');
+                    updateBanner.classList.add('status-downloaded');
+                    updateIcon.innerHTML = '&#x2705;';
+                    updateMessage.textContent = `Update v${data.version} is ready to install!`;
+                    updateInstallBtn.classList.remove('hidden');
+                    break;
+
+                case 'error':
+                    updateBanner.classList.remove('hidden');
+                    updateBanner.classList.add('status-error');
+                    updateIcon.innerHTML = '&#x26A0;';
+                    updateMessage.textContent = 'Update error: ' + (data.message || 'Unknown error');
+                    // Auto-hide error after 10 seconds
+                    setTimeout(() => {
+                        updateBanner.classList.add('hidden');
+                    }, 10000);
+                    break;
+
+                case 'not-available':
+                    // Don't show banner
+                    updateBanner.classList.add('hidden');
+                    break;
+            }
+        }
+
+        ipcRenderer.on('update-status', (event, data) => {
+            handleUpdateStatus(data);
+        });
+
+        if (updateDownloadBtn) {
+            updateDownloadBtn.addEventListener('click', () => {
+                ipcRenderer.invoke('download-update');
+                updateDownloadBtn.classList.add('hidden');
+            });
+        }
+
+        if (updateInstallBtn) {
+            updateInstallBtn.addEventListener('click', () => {
+                if (confirm('The app will restart to install the update. Continue?')) {
+                    ipcRenderer.invoke('install-update');
+                }
+            });
+        }
+
+        if (updateDismissBtn) {
+            updateDismissBtn.addEventListener('click', () => {
+                updateBanner.classList.add('hidden');
+            });
+        }
     } catch (e) {
         // Not in Electron context, ignore
     }
