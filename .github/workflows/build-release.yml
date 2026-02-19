@@ -112,7 +112,7 @@ jobs:
       - name: Copy installation instructions
         working-directory: Birilium/wallet
         run: |
-          Copy-Item "INSTALL-WINDOWS.txt" -Destination "distribution/README-INSTALL.txt"
+          Copy-Item "INSTALL-WINDOWS.txt" -Destination "distribution/INSTALL-WINDOWS.txt"
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -120,13 +120,13 @@ jobs:
           name: Birilium-Wallet-Windows-Setup
           path: |
             Birilium/wallet/distribution/*.exe
-            Birilium/wallet/distribution/README-INSTALL.txt
+            Birilium/wallet/distribution/INSTALL-WINDOWS.txt
           retention-days: 5
 
       - name: Create portable ZIP
         working-directory: Birilium/wallet/distribution
         run: |
-          Copy-Item "..\INSTALL-WINDOWS.txt" -Destination "win-unpacked\README-INSTALL.txt"
+          Copy-Item "..\INSTALL-WINDOWS.txt" -Destination "win-unpacked\INSTALL-WINDOWS.txt"
           Compress-Archive -Path "win-unpacked\*" -DestinationPath "Birilium-Wallet-Portable-Win64.zip"
 
       - name: Upload Windows portable
@@ -201,7 +201,7 @@ jobs:
 
       - name: Copy installation instructions
         working-directory: Birilium/wallet
-        run: cp INSTALL-MACOS.txt distribution/README-INSTALL.txt
+        run: cp INSTALL-MACOS.txt distribution/INSTALL-MACOS.txt
 
       - name: Upload macOS ARM64 DMG
         uses: actions/upload-artifact@v4
@@ -209,7 +209,7 @@ jobs:
           name: Birilium-Wallet-macOS-ARM64
           path: |
             Birilium/wallet/distribution/Birilium-Wallet-macOS-ARM64.dmg
-            Birilium/wallet/distribution/README-INSTALL.txt
+            Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
 
       - name: Upload macOS Intel DMG
@@ -218,7 +218,7 @@ jobs:
           name: Birilium-Wallet-macOS-Intel
           path: |
             Birilium/wallet/distribution/Birilium-Wallet-macOS-Intel.dmg
-            Birilium/wallet/distribution/README-INSTALL.txt
+            Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
 
   build-linux:
@@ -250,7 +250,7 @@ jobs:
 
       - name: Copy installation instructions
         working-directory: Birilium/wallet
-        run: cp INSTALL-LINUX.txt distribution/README-INSTALL.txt
+        run: cp INSTALL-LINUX.txt distribution/INSTALL-LINUX.txt
 
       - name: Upload Linux AppImage
         uses: actions/upload-artifact@v4
@@ -258,7 +258,7 @@ jobs:
           name: Birilium-Wallet-Linux-AppImage
           path: |
             Birilium/wallet/distribution/*.AppImage
-            Birilium/wallet/distribution/README-INSTALL.txt
+            Birilium/wallet/distribution/INSTALL-LINUX.txt
           retention-days: 5
 
       - name: Upload Linux DEB
@@ -267,7 +267,7 @@ jobs:
           name: Birilium-Wallet-Linux-DEB
           path: |
             Birilium/wallet/distribution/*.deb
-            Birilium/wallet/distribution/README-INSTALL.txt
+            Birilium/wallet/distribution/INSTALL-LINUX.txt
           retention-days: 5
 
   release:
