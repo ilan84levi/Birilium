@@ -957,7 +957,50 @@ app.post('/api/contact', async (req, res) => {
 
         // 2. Try to send email
         let emailSent = false;
-        if (process.env.CONTACT_EMAIL_PASSWORD) {
+        const emailHtml = `
+            <h2>New Contact Form Submission</h2>
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Message:</strong></p>
+            <p>${message.replace(/\n/g, '<br>')}</p>
+            <hr>
+            <p><small>Sent from Birilium Wallet Contact Form at ${new Date().toISOString()}</small></p>
+        `;
+
+        // Try Resend API first (works over HTTPS, no SMTP needed)
+        if (process.env.RESEND_API_KEY) {
+            try {
+                const resendFrom = process.env.RESEND_FROM_EMAIL || 'Birilium Wallet <noreply@birilium.com>';
+                const response = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from: resendFrom,
+                        to: ['biriliumcoin@gmail.com'],
+                        subject: `Birilium Wallet Contact Form - ${name}`,
+                        html: emailHtml,
+                        reply_to: email
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    emailSent = true;
+                    console.log(`[Contact] Email sent via Resend (id: ${result.id}) for ${name} <${email}>`);
+                } else {
+                    console.error('[Contact] Resend API error:', result.message || JSON.stringify(result));
+                }
+            } catch (resendError) {
+                console.error('[Contact] Resend send failed:', resendError.message);
+            }
+        }
+
+        // Fallback to nodemailer SMTP if Resend not configured or failed
+        if (!emailSent && process.env.CONTACT_EMAIL_PASSWORD) {
             try {
                 const nodemailer = require('nodemailer');
                 const transporter = nodemailer.createTransport({
@@ -968,32 +1011,23 @@ app.post('/api/contact', async (req, res) => {
                     }
                 });
 
-                const mailOptions = {
+                await transporter.sendMail({
                     from: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
                     to: 'biriliumcoin@gmail.com',
                     subject: `Birilium Wallet Contact Form - ${name}`,
-                    html: `
-                        <h2>New Contact Form Submission</h2>
-                        <p><strong>Name:</strong> ${name}</p>
-                        <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
-                        <p><strong>Email:</strong> ${email}</p>
-                        <p><strong>Message:</strong></p>
-                        <p>${message.replace(/\n/g, '<br>')}</p>
-                        <hr>
-                        <p><small>Sent from Birilium Wallet Contact Form at ${new Date().toISOString()}</small></p>
-                    `,
+                    html: emailHtml,
                     replyTo: email
-                };
+                });
 
-                await transporter.sendMail(mailOptions);
                 emailSent = true;
-                console.log(`[Contact] Email sent successfully for message from ${name} <${email}>`);
+                console.log(`[Contact] Email sent via SMTP for ${name} <${email}>`);
             } catch (emailError) {
-                console.error('[Contact] Email send failed:', emailError.message);
-                console.error('[Contact] Email error details:', emailError.code, emailError.response);
+                console.error('[Contact] SMTP send failed:', emailError.message);
             }
-        } else {
-            console.warn('[Contact] CONTACT_EMAIL_PASSWORD not set in .env - email skipped');
+        }
+
+        if (!emailSent && !process.env.RESEND_API_KEY && !process.env.CONTACT_EMAIL_PASSWORD) {
+            console.warn('[Contact] No email provider configured (set RESEND_API_KEY or CONTACT_EMAIL_PASSWORD)');
         }
 
         // Log to console as backup

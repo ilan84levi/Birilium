@@ -48,7 +48,9 @@ const config = {
     paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || null,
     paypalPlanId: process.env.PAYPAL_PLAN_ID || null,
 
-    // Email
+    // Email (Resend API preferred, SMTP as fallback)
+    resendApiKey: process.env.RESEND_API_KEY || null,
+    resendFromEmail: process.env.RESEND_FROM_EMAIL || 'Birilium Wallet <noreply@birilium.com>',
     contactEmail: process.env.CONTACT_EMAIL || 'biriliumcoin@gmail.com',
     contactEmailPassword: process.env.CONTACT_EMAIL_PASSWORD || null,
 
