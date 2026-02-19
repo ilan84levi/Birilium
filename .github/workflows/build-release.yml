@@ -218,7 +218,6 @@ jobs:
           name: Birilium-Wallet-macOS-Intel
           path: |
             Birilium/wallet/distribution/Birilium-Wallet-macOS-Intel.dmg
-            Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
 
   build-linux:
@@ -267,7 +266,6 @@ jobs:
           name: Birilium-Wallet-Linux-DEB
           path: |
             Birilium/wallet/distribution/*.deb
-            Birilium/wallet/distribution/INSTALL-LINUX.txt
           retention-days: 5
 
   release:
