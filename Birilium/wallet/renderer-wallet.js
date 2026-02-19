@@ -32,7 +32,7 @@ if (walletAPI && walletAPI.crypto) {
     // Legacy mode: use require (nodeIntegration enabled)
     console.log('⚠️ Running in legacy mode with nodeIntegration');
     CryptoJS = require('crypto-js');
-    QRCode = require('qrcode');
+    QRCode = require('qrcode/lib/browser');
     secp256k1 = require('@noble/secp256k1');
     const hashes = require('@noble/hashes/sha2.js');
     const hmacModule = require('@noble/hashes/hmac.js');
@@ -1903,8 +1903,8 @@ document.addEventListener('DOMContentLoaded', () => {
             contactStatus.textContent = 'Sending message...';
 
             try {
-                // Send contact form data to backend
-                const response = await fetch('http://localhost:3001/api/contact', {
+                // Send contact form data to backend (use live server, not localhost)
+                const response = await fetch('https://api.birilium.com/api/contact', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
