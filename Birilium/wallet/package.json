@@ -92,7 +92,9 @@
         }
       ],
       "icon": "build/icon.png",
-      "publisherName": "Birilium Team"
+      "signtoolOptions": {
+        "publisherName": "Birilium Team"
+      }
     },
     "nsis": {
       "oneClick": false,
