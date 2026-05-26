@@ -205,7 +205,13 @@ class BanScoreManager {
     constructor(banThreshold = 100) {
         this.banThreshold = banThreshold;
         this.scores = new Map(); // peerId -> { score, lastIncrement }
-        this.bannedPeers = new Set();
+        // peerId -> bannedAt ms. Was a Set; switched to Map so we can expire
+        // bans after BAN_TTL_MS instead of accumulating forever (the Set had
+        // no eviction, so it was an unbounded memory leak on a long-running
+        // node).
+        this.bannedPeers = new Map();
+        this.BAN_TTL_MS = 24 * 60 * 60 * 1000; // 24h ban
+        this.MAX_BANNED = 10000;               // hard cap as a defence-in-depth
         this.decayInterval = 60000; // Decay scores every minute
         this.decayAmount = 10; // Decay 10 points per minute
 
@@ -213,8 +219,18 @@ class BanScoreManager {
         this.startDecayTimer();
     }
 
+    isBanned(peerId) {
+        const bannedAt = this.bannedPeers.get(peerId);
+        if (bannedAt === undefined) return false;
+        if (Date.now() - bannedAt > this.BAN_TTL_MS) {
+            this.bannedPeers.delete(peerId);
+            return false;
+        }
+        return true;
+    }
+
     incrementScore(peerId, points = 10) {
-        if (this.bannedPeers.has(peerId)) {
+        if (this.isBanned(peerId)) {
             return { banned: true, score: this.banThreshold };
         }
 
@@ -225,7 +241,14 @@ class BanScoreManager {
 
         // Check if should ban
         if (current.score >= this.banThreshold) {
-            this.bannedPeers.add(peerId);
+            // Cap the banned-peers Map size so a hostile network can't push
+            // us into OOM by triggering tons of distinct peer-id bans.
+            if (this.bannedPeers.size >= this.MAX_BANNED) {
+                // Evict the oldest entry (Map preserves insertion order).
+                const firstKey = this.bannedPeers.keys().next().value;
+                if (firstKey !== undefined) this.bannedPeers.delete(firstKey);
+            }
+            this.bannedPeers.set(peerId, Date.now());
             console.log(`[BAN] Peer ${peerId} banned (score: ${current.score})`);
             return { banned: true, score: current.score };
         }
@@ -233,10 +256,8 @@ class BanScoreManager {
         return { banned: false, score: current.score };
     }
 
-    isBanned(peerId) {
-        return this.bannedPeers.has(peerId);
-    }
-
+    // isBanned is defined above with TTL expiry — this duplicate is kept as
+    // a delete to avoid an override conflict.
     unban(peerId) {
         this.bannedPeers.delete(peerId);
         this.scores.delete(peerId);

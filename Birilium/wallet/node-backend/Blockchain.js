@@ -46,6 +46,21 @@ class Blockchain {
             const state = await this.database.loadBlockchainState();
 
             if (blocks && blocks.length > 0) {
+                // Contiguity check: block_index in the DB must be 0..N-1 in
+                // sequence. A gap means a previous save was rolled back
+                // mid-flight (or the DB was tampered with) — refusing to load
+                // is safer than starting with a chain whose hash links are
+                // about to fail at the first missing block.
+                for (let i = 0; i < blocks.length; i++) {
+                    const idx = blocks[i].index;
+                    if (idx !== i) {
+                        throw new Error(
+                            `Block-index gap in database: expected ${i}, got ${idx}. ` +
+                            `Refusing to load. Inspect ${this.database && this.database.dbPath || 'the SQLite file'} ` +
+                            `or restore from backup.`
+                        );
+                    }
+                }
                 this.chain = blocks.map((blockData, index) => {
                     const Block = require('./Block');
                     const Transaction = require('./Transaction');

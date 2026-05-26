@@ -64,8 +64,12 @@ const limiter = rateLimit({
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, trustProxy: false },
     skip: (req) => {
-        // Skip rate limiting for localhost connections (local wallet)
-        const ip = req.ip || req.connection.remoteAddress;
+        // Skip ONLY when no proxy is in the picture. Behind nginx the
+        // X-Forwarded-For header is always set, so prod traffic is never
+        // skipped. A spoofed XFF: 127.0.0.1 used to bypass the limiter
+        // because trust-proxy made req.ip return the spoofed value.
+        if (req.headers['x-forwarded-for']) return false;
+        const ip = req.socket && req.socket.remoteAddress;
         return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
     },
     handler: (req, res) => {
@@ -85,6 +89,25 @@ const miningLimiter = rateLimit({
         res.status(429).json({
             success: false,
             error: 'Too many mining requests, please slow down.'
+        });
+    }
+});
+
+// Dedicated brute-force guard for the admin login. The global limiter
+// explicitly skips this route (so legitimate users aren't locked out by a
+// shared admin endpoint), so without this an attacker could try unlimited
+// passwords.
+const adminLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,                  // 10 attempts per window per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true, // only failures count toward the budget
+    validate: { xForwardedForHeader: false, trustProxy: false },
+    handler: (req, res) => {
+        res.status(429).json({
+            success: false,
+            error: 'Too many login attempts. Please try again in 15 minutes.'
         });
     }
 });
@@ -203,7 +226,27 @@ if (!ADMIN_USERNAME || (!ADMIN_PASSWORD && !ADMIN_PASSWORD_HASH)) {
 }
 
 // JWT-based admin authentication middleware
-const authenticateAdmin = auth.authenticateJWT;
+// Admin auth = JWT verification + blacklist check. authenticateJWT alone
+// doesn't consult the blacklist, which meant /api/admin/auth/logout was a
+// no-op in practice — the JWT stayed valid until its 1y expiry. Now logout
+// actually revokes.
+const authenticateAdmin = (req, res, next) => {
+    auth.authenticateJWT(req, res, (err) => {
+        if (err) return next(err);
+        const authHeader = req.headers.authorization;
+        const token = authHeader && authHeader.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : null;
+        if (token && security.isTokenBlacklisted(token)) {
+            return res.status(401).json({
+                success: false,
+                error: 'Token has been revoked',
+                code: 'TOKEN_REVOKED'
+            });
+        }
+        next();
+    });
+};
 const requireAdmin = auth.requireAdmin;
 
 // Initialize database and blockchain
@@ -733,26 +776,53 @@ app.post('/api/mining/submit', async (req, res) => {
         newBlock.nonce = block.nonce;
         newBlock.hash = block.hash;
 
-        // Add block to chain
-        biriliumChain.chain.push(newBlock);
-        biriliumChain.currentSupply += (coinbaseTx.amount - maxFees); // Only new coins
-        biriliumChain.balanceCacheDirty = true;
-        biriliumChain.noncesCacheDirty = true;
+        // Take the block-acceptance lock so a P2P new-block can't race us.
+        if (!acquireBlockAcceptLock()) {
+            return res.status(409).json({
+                success: false,
+                error: 'Another block is being accepted right now — retry.'
+            });
+        }
+        try {
+            // Re-check chain tip after acquiring the lock; another path may
+            // have advanced the chain while we were validating.
+            if (biriliumChain.chain.length !== newBlock.index) {
+                return res.status(409).json({
+                    success: false,
+                    error: `Chain advanced while validating. Expected index ${newBlock.index}, current height is ${biriliumChain.chain.length}.`
+                });
+            }
+            // Persist FIRST, then mutate in-memory state. This way a crash
+            // between the two won't leave the in-memory chain ahead of the DB.
+            if (database && database.isConnected) {
+                const ok = await database.saveBlock(newBlock, newBlock.index);
+                if (!ok) {
+                    return res.status(500).json({
+                        success: false,
+                        error: 'Database refused to persist the block.'
+                    });
+                }
+            }
+            biriliumChain.chain.push(newBlock);
+            biriliumChain.currentSupply += (coinbaseTx.amount - maxFees);
+            biriliumChain.balanceCacheDirty = true;
+            biriliumChain.noncesCacheDirty = true;
 
-        // Remove mined transactions from mempool
-        const minedTxSignatures = new Set(
-            block.transactions
-                .filter(tx => tx.signature)
-                .map(tx => tx.signature)
-        );
-        biriliumChain.pendingTransactions = biriliumChain.pendingTransactions.filter(
-            tx => !minedTxSignatures.has(tx.signature)
-        );
+            // Remove mined transactions from mempool
+            const minedTxSignatures = new Set(
+                block.transactions
+                    .filter(tx => tx.signature)
+                    .map(tx => tx.signature)
+            );
+            biriliumChain.pendingTransactions = biriliumChain.pendingTransactions.filter(
+                tx => !minedTxSignatures.has(tx.signature)
+            );
 
-        // Save to database
-        if (database && database.isConnected) {
-            await database.saveBlock(newBlock, newBlock.index);
-            await biriliumChain.saveToDatabase();
+            if (database && database.isConnected) {
+                await biriliumChain.saveToDatabase();
+            }
+        } finally {
+            releaseBlockAcceptLock();
         }
 
         // Adjust difficulty
@@ -838,47 +908,25 @@ app.get('/api/node/blocks', (req, res) => {
     });
 });
 
-// Receive block from peer node
+// REST peer-sync receive paths are disabled. The canonical P2P transport is
+// the WebSocket on P2P_PORT (6001) with handshake + ban scoring (see
+// p2p-security.js). The REST handlers below previously accepted blocks and
+// peer URLs from any unauthenticated caller, bypassing the WS validation
+// + signature checks. They also called peer-sync.js:validateAndAddBlock,
+// which referenced a non-existent calculateHash method (so the endpoints
+// were already non-functional). Returning 410 makes the intent explicit.
 app.post('/api/node/block', (req, res) => {
-    const { block, fromNode } = req.body;
-
-    if (!block) {
-        return res.status(400).json({ success: false, error: 'No block provided' });
-    }
-
-    const result = peerSync.receiveBlock(block, fromNode);
-
-    if (result.success) {
-        // Notify admin WebSocket of new block
-        adminWebSocket.onNewBlock(block, block.index);
-    }
-
-    res.json(result);
+    res.status(410).json({ success: false, error: 'REST block submission is disabled. Use the P2P WebSocket on port 6001.' });
 });
-
-// Get/share peer list
-app.get('/api/node/peers', (req, res) => {
+app.get('/api/node/peers', authenticateAdmin, (req, res) => {
     res.json({
         nodeId: peerSync.nodeId,
         nodeUrl: peerSync.nodeUrl,
         peers: peerSync.peers
     });
 });
-
 app.post('/api/node/peers', (req, res) => {
-    const { nodeUrl, peers } = req.body;
-
-    // Add the reporting node as a peer
-    if (nodeUrl) {
-        peerSync.addPeer(nodeUrl);
-    }
-
-    // Optionally add peers from the peer's list
-    if (peers && Array.isArray(peers)) {
-        peers.forEach(p => peerSync.addPeer(p));
-    }
-
-    res.json({ success: true, peerCount: peerSync.peers.length });
+    res.status(410).json({ success: false, error: 'REST peer registration is disabled. Configure peers via the PEERS env var.' });
 });
 
 // ============================================
@@ -1065,17 +1113,11 @@ app.post('/api/contact', async (req, res) => {
             console.warn('[Contact] No email provider configured (set RESEND_API_KEY or CONTACT_EMAIL_PASSWORD)');
         }
 
-        // Log to console as backup
-        console.log('=== CONTACT FORM SUBMISSION ===');
-        console.log('Name:', name);
-        console.log('Phone:', phone || 'Not provided');
-        console.log('Email:', email);
-        console.log('Message:', message);
-        console.log('DB saved:', messageId ? `#${messageId}` : 'NO');
-        console.log('Email sent:', emailSent ? 'YES' : 'NO');
-        console.log('==============================');
-
-        logger.info({ name, email, messageId, emailSent }, 'Contact form submitted');
+        // Structured log — no PII content. Just enough metadata to correlate
+        // a complaint with a database row via messageId. Don't put name/email/
+        // message bodies in logs; they end up in log aggregators, screen
+        // shares, and incident reports.
+        logger.info({ messageId, emailSent, hasPhone: !!phone }, 'Contact form submitted');
 
         // Return success if at least one delivery method worked
         if (messageId || emailSent) {
@@ -1137,7 +1179,7 @@ app.get('/api/admin', (req, res) => {
 });
 
 // Admin login endpoint (JWT-based)
-app.post('/api/admin/auth/login', async (req, res) => {
+app.post('/api/admin/auth/login', adminLoginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -1962,8 +2004,13 @@ app.post('/api/admin/auth/logout', authenticateAdmin, security.csrfMiddleware, a
             : null;
 
         if (token) {
-            // Blacklist the token (12 hours expiry to match token lifetime)
-            const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
+            // Blacklist until the token's real expiry (decoded.exp is seconds).
+            // Previously hardcoded to 12h, but JWT_EXPIRES_IN is 1y — so the
+            // blacklist used to lapse 364.5 days before the token did.
+            const decoded = auth.verifyToken(token);
+            const expiresAt = decoded && decoded.exp
+                ? decoded.exp * 1000
+                : Date.now() + (24 * 60 * 60 * 1000);
             security.blacklistToken(token, expiresAt);
 
             await audit.logAudit(req.user.username, 'LOGOUT', null, {}, true, req);
@@ -2033,7 +2080,7 @@ app.get('/api/admin/contacts', authenticateAdmin, async (req, res) => {
 });
 
 // Mark contact message as read (admin only)
-app.post('/api/admin/contacts/:id/read', authenticateAdmin, async (req, res) => {
+app.post('/api/admin/contacts/:id/read', authenticateAdmin, security.csrfMiddleware, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         await database.markContactRead(id);
@@ -2101,6 +2148,44 @@ app.post('/api/subscription/activate', async (req, res) => {
             });
         }
 
+        // Verify with PayPal that this subscription actually exists and is
+        // active. Without this, any unauthenticated caller could write an
+        // arbitrary "active" subscription row with any amount.
+        const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+        const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+        const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
+        if (PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET) {
+            const apiBase = PAYPAL_MODE === 'live'
+                ? 'https://api-m.paypal.com'
+                : 'https://api-m.sandbox.paypal.com';
+            try {
+                const basic = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+                const tok = await axios.post(`${apiBase}/v1/oauth2/token`, 'grant_type=client_credentials', {
+                    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    timeout: 10000
+                });
+                const sub = await axios.get(`${apiBase}/v1/billing/subscriptions/${subscriptionId}`, {
+                    headers: { Authorization: `Bearer ${tok.data.access_token}` },
+                    timeout: 10000
+                });
+                if (sub.data.status !== 'ACTIVE' && sub.data.status !== 'APPROVED') {
+                    return res.status(400).json({ success: false, error: `PayPal subscription status is ${sub.data.status}, not ACTIVE` });
+                }
+                if (sub.data.plan_id && sub.data.plan_id !== planId) {
+                    return res.status(400).json({ success: false, error: 'plan_id does not match PayPal record' });
+                }
+            } catch (verifyErr) {
+                const code = verifyErr.response && verifyErr.response.status;
+                if (code === 404) {
+                    return res.status(404).json({ success: false, error: 'Subscription not found in PayPal' });
+                }
+                return res.status(502).json({ success: false, error: 'Could not verify subscription with PayPal' });
+            }
+        } else {
+            // PayPal not configured — refuse to write arbitrary "active" rows.
+            return res.status(503).json({ success: false, error: 'Subscription verification unavailable (PayPal not configured)' });
+        }
+
         // Store subscription in database (SQLite)
         const now = Date.now();
         const startTime = timestamp ? new Date(timestamp).getTime() : now;
@@ -2162,6 +2247,32 @@ app.post('/api/subscription/cancel', async (req, res) => {
                 success: false,
                 error: 'Missing required field: subscriptionId'
             });
+        }
+
+        // Require the caller to identify themselves as the owner of the
+        // subscription. Subscription IDs are not secret (they're echoed to
+        // every frontend), so without this anyone who saw a sub ID could
+        // cancel it for the real owner.
+        if (database && database.isConnected) {
+            try {
+                const row = database.db.prepare(
+                    'SELECT walletAddress FROM subscriptions WHERE subscriptionId = ?'
+                ).get(subscriptionId);
+                if (row && walletAddress && row.walletAddress !== walletAddress) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'walletAddress does not match the subscription owner'
+                    });
+                }
+                if (!walletAddress) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'walletAddress is required to cancel a subscription'
+                    });
+                }
+            } catch (ownerErr) {
+                console.error('[Subscription] Owner check failed:', ownerErr.message);
+            }
         }
 
         // PayPal API credentials from environment variables
@@ -2676,24 +2787,36 @@ const handleBlockchainResponse = (receivedBlocks, peerId, ws) => {
             console.log('Attempting to append single block to chain');
             const block = convertBlockData(latestBlockReceived);
             if (isValidBlock(block, latestBlockHeld)) {
-                biriliumChain.chain.push(block);
-                biriliumChain.balanceCacheDirty = true;
-                biriliumChain.noncesCacheDirty = true;
-                // Update supply for any coinbase transactions
-                for (const tx of block.transactions) {
-                    if (tx.fromAddress === null) {
-                        biriliumChain.currentSupply += tx.amount;
+                if (!acquireBlockAcceptLock()) {
+                    insertOrphanCapped(block.hash, block);
+                    return;
+                }
+                (async () => {
+                    try {
+                        if (database && database.isConnected) {
+                            const ok = await database.saveBlock(block, block.index);
+                            if (!ok) {
+                                console.warn(`[P2P] DB save refused block #${block.index}; not appending in-memory`);
+                                return;
+                            }
+                        }
+                        biriliumChain.chain.push(block);
+                        biriliumChain.balanceCacheDirty = true;
+                        biriliumChain.noncesCacheDirty = true;
+                        for (const tx of block.transactions) {
+                            if (tx.fromAddress === null) {
+                                biriliumChain.currentSupply += tx.amount;
+                            }
+                        }
+                        if (database && database.isConnected) {
+                            await biriliumChain.saveToDatabase();
+                        }
+                        console.log(`✓ Appended block #${block.index} to chain`);
+                        broadcast(responseLatestMsg());
+                    } finally {
+                        releaseBlockAcceptLock();
                     }
-                }
-                // Save to database
-                if (database && database.isConnected) {
-                    database.saveBlock(block, block.index).catch(err => {
-                        console.error('Error saving block:', err.message);
-                    });
-                    biriliumChain.saveToDatabase();
-                }
-                console.log(`✓ Appended block #${block.index} to chain`);
-                broadcast(responseLatestMsg());
+                })();
             } else {
                 console.log('Single block validation failed, requesting full chain');
                 write(ws, queryAllMsg());
@@ -2759,6 +2882,28 @@ const handleNewTransaction = (transaction, peerId) => {
 
 // Orphan block pool for handling forks
 const orphanBlocks = new Map(); // hash -> block
+const ORPHAN_BLOCKS_MAX = 100;
+// Cheap mutex so two concurrent code paths (P2P new-block and the local
+// mining-submit endpoint) can't push to biriliumChain.chain at the same
+// index. Node is single-threaded but the two paths interleave across
+// await points; without this the chain could be diverged in memory.
+let blockAcceptInFlight = false;
+const acquireBlockAcceptLock = () => {
+    if (blockAcceptInFlight) return false;
+    blockAcceptInFlight = true;
+    return true;
+};
+const releaseBlockAcceptLock = () => { blockAcceptInFlight = false; };
+// Cap orphan growth at insert time, not just after successful append. A
+// flood of unconnectable blocks must not grow the Map unboundedly.
+const insertOrphanCapped = (hash, block) => {
+    if (orphanBlocks.size >= ORPHAN_BLOCKS_MAX) {
+        // Evict the oldest entry (Map iteration is insertion order).
+        const firstKey = orphanBlocks.keys().next().value;
+        if (firstKey !== undefined) orphanBlocks.delete(firstKey);
+    }
+    orphanBlocks.set(hash, block);
+};
 
 const convertBlockData = (blockData) => {
     const Block = require('./Block');
@@ -2788,6 +2933,73 @@ const convertBlockData = (blockData) => {
     return block;
 };
 
+// Per-tx checks applied to P2P-received blocks. Returns true if the block's
+// transaction list is structurally valid AND every non-coinbase signature
+// verifies. Sender-balance and nonce checks are deliberately NOT here because
+// they require chain state that may legitimately lag the peer's view.
+const blockTxsAreValid = (block, miningReward) => {
+    if (!Array.isArray(block.transactions) || block.transactions.length === 0) {
+        console.warn('[BlockValidation] empty or non-array transactions');
+        return false;
+    }
+
+    let coinbaseCount = 0;
+    let coinbaseAmount = 0;
+    let totalFees = 0;
+
+    for (const tx of block.transactions) {
+        // Amount sanity. NaN/negative/non-finite is always wrong.
+        if (typeof tx.amount !== 'number' || !Number.isFinite(tx.amount) || tx.amount < 0) {
+            console.warn(`[BlockValidation] invalid tx.amount: ${tx.amount}`);
+            return false;
+        }
+        if (tx.fee != null && (typeof tx.fee !== 'number' || !Number.isFinite(tx.fee) || tx.fee < 0)) {
+            console.warn(`[BlockValidation] invalid tx.fee: ${tx.fee}`);
+            return false;
+        }
+        if (!tx.toAddress || typeof tx.toAddress !== 'string') {
+            console.warn('[BlockValidation] tx missing toAddress');
+            return false;
+        }
+
+        if (tx.fromAddress === null || tx.fromAddress === undefined) {
+            // Coinbase — there must be exactly one per block.
+            coinbaseCount++;
+            coinbaseAmount += tx.amount;
+            continue;
+        }
+
+        // Non-coinbase: verify signature. Transaction.isValid() throws when no
+        // signature is present, which we treat as invalid (not crash).
+        try {
+            if (!tx.isValid()) {
+                console.warn(`[BlockValidation] invalid signature on tx from ${String(tx.fromAddress).substring(0, 16)}...`);
+                return false;
+            }
+        } catch (err) {
+            console.warn(`[BlockValidation] tx.isValid() threw: ${err.message}`);
+            return false;
+        }
+
+        totalFees += tx.fee || 0;
+    }
+
+    if (coinbaseCount !== 1) {
+        console.warn(`[BlockValidation] expected exactly 1 coinbase tx, got ${coinbaseCount}`);
+        return false;
+    }
+
+    // Coinbase inflation check. Coinbase may claim at most reward + fees.
+    // Use a small floating-point tolerance because fees are summed as floats.
+    const maxCoinbase = (miningReward || 0) + totalFees + 1e-9;
+    if (coinbaseAmount > maxCoinbase) {
+        console.warn(`[BlockValidation] coinbase ${coinbaseAmount} exceeds max ${maxCoinbase} (reward + fees)`);
+        return false;
+    }
+
+    return true;
+};
+
 const isValidBlock = (block, previousBlock) => {
     // Check index
     if (previousBlock.index + 1 !== block.index) {
@@ -2810,36 +3022,62 @@ const isValidBlock = (block, previousBlock) => {
         console.log(`[BlockValidation] PoW failed: ${leadingZeros} zeros, need ${MIN_DIFFICULTY}`);
         return false;
     }
+    // NEW: per-tx checks — signatures, coinbase rules, amount sanity.
+    // Without this, a malicious peer could insert forged or inflationary txs.
+    if (!blockTxsAreValid(block, biriliumChain.miningReward)) {
+        return false;
+    }
     return true;
 };
 
-const handleNewBlock = (blockData, peerId) => {
+const handleNewBlock = async (blockData, peerId) => {
     try {
         const block = convertBlockData(blockData);
         const latestBlock = biriliumChain.getLatestBlock();
 
         // Case 1: Block extends our current chain directly
         if (block.previousHash === latestBlock.hash && block.index === latestBlock.index + 1) {
-            if (isValidBlock(block, latestBlock)) {
-                biriliumChain.chain.push(block);
-                biriliumChain.balanceCacheDirty = true;
-                biriliumChain.noncesCacheDirty = true;
-                console.log(`[P2P] New block #${block.index} added to chain`);
+            if (!acquireBlockAcceptLock()) {
+                // Another block is being accepted right now. Park this one as
+                // an orphan; processOrphanBlocks will pick it up after the
+                // current acceptance completes.
+                insertOrphanCapped(block.hash, block);
+                return;
+            }
+            try {
+                if (isValidBlock(block, latestBlock)) {
+                    // Persist BEFORE the in-memory push. If the save fails or
+                    // we crash mid-save, the chain stays consistent with the
+                    // DB. Old code pushed first and fire-and-forgot the save,
+                    // which meant a crash could drop the freshly-accepted
+                    // block from the persisted chain on restart.
+                    if (database && database.isConnected) {
+                        const ok = await database.saveBlock(block, block.index);
+                        if (!ok) {
+                            console.warn(`[P2P] DB save refused block #${block.index}; not appending in-memory`);
+                            peerManager.incrementBanScore(peerId, 5);
+                            return;
+                        }
+                    }
+                    biriliumChain.chain.push(block);
+                    biriliumChain.balanceCacheDirty = true;
+                    biriliumChain.noncesCacheDirty = true;
+                    console.log(`[P2P] New block #${block.index} added to chain`);
 
-                // Save to database
-                if (database && database.isConnected) {
-                    database.saveBlock(block, block.index).catch(err => {
-                        console.error('Error saving block:', err.message);
-                    });
+                    // Broadcast to other peers
+                    broadcast(responseNewBlockMsg(block));
+
+                    // Check if any orphan blocks can now be connected
+                    await processOrphanBlocks();
+                } else {
+                    console.warn(`[P2P] Invalid block from ${peerId.substring(0, 16)}...`);
+                    // A peer shipping a structurally-bad block is either
+                    // buggy or hostile; raise ban score so repeats get them
+                    // dropped.
+                    peerManager.incrementBanScore(peerId, 10);
                 }
-
-                // Broadcast to other peers
-                broadcast(responseNewBlockMsg(block));
-
-                // Check if any orphan blocks can now be connected
-                processOrphanBlocks();
-            } else {
-                console.warn(`[P2P] Invalid block from ${peerId.substring(0, 16)}...`);
+            } finally {
+                releaseBlockAcceptLock();
             }
             return;
         }
@@ -2848,7 +3086,7 @@ const handleNewBlock = (blockData, peerId) => {
         if (block.index > latestBlock.index + 1) {
             console.log(`[P2P] Block #${block.index} is ahead of our chain (we have #${latestBlock.index}). Requesting full chain.`);
             // Store as orphan and request full chain
-            orphanBlocks.set(block.hash, block);
+            insertOrphanCapped(block.hash, block);
             // Request the full chain from this peer
             const peer = peerManager.getAllPeers().find(p => p.peerId === peerId);
             if (peer) {
@@ -2862,7 +3100,7 @@ const handleNewBlock = (blockData, peerId) => {
             // Check if this block could be part of a longer chain
             // Store it as orphan - it might become relevant if we receive a longer chain
             if (!orphanBlocks.has(block.hash)) {
-                orphanBlocks.set(block.hash, block);
+                insertOrphanCapped(block.hash, block);
                 console.log(`[P2P] Stored competing block #${block.index} as orphan (fork candidate)`);
 
                 // If this block is at our chain tip height, request full chain to check if peer has longer chain
@@ -2881,8 +3119,9 @@ const handleNewBlock = (blockData, peerId) => {
     }
 };
 
-const processOrphanBlocks = () => {
-    // Try to connect orphan blocks to our chain
+const processOrphanBlocks = async () => {
+    // Try to connect orphan blocks to our chain. Persist before push, same
+    // ordering rule as handleNewBlock — DB is the source of truth on restart.
     let connected = true;
     while (connected && orphanBlocks.size > 0) {
         connected = false;
@@ -2891,17 +3130,19 @@ const processOrphanBlocks = () => {
         for (const [hash, block] of orphanBlocks) {
             if (block.previousHash === latestBlock.hash && block.index === latestBlock.index + 1) {
                 if (isValidBlock(block, latestBlock)) {
+                    if (database && database.isConnected) {
+                        const ok = await database.saveBlock(block, block.index);
+                        if (!ok) {
+                            console.warn(`[P2P] DB save refused orphan #${block.index}; dropping`);
+                            orphanBlocks.delete(hash);
+                            continue;
+                        }
+                    }
                     biriliumChain.chain.push(block);
                     biriliumChain.balanceCacheDirty = true;
                     biriliumChain.noncesCacheDirty = true;
                     orphanBlocks.delete(hash);
                     console.log(`[P2P] Connected orphan block #${block.index} to chain`);
-
-                    if (database && database.isConnected) {
-                        database.saveBlock(block, block.index).catch(err => {
-                            console.error('Error saving block:', err.message);
-                        });
-                    }
                     connected = true;
                     break;
                 }

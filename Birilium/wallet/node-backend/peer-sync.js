@@ -51,9 +51,13 @@ class PeerSync {
     }
 
     /**
-     * Add a peer node
+     * Add a peer node. Capped at PEER_LIST_MAX so a hostile node (or a bug)
+     * can't grow the list unboundedly via the REST share-peers API.
      */
     addPeer(peerUrl) {
+        if (this.peers.length >= (this.PEER_LIST_MAX || 64)) return false;
+        if (typeof peerUrl !== 'string' || peerUrl.length < 6) return false;
+        if (!/^https?:\/\/|^ws:\/\/|^wss:\/\//.test(peerUrl)) return false;
         if (!this.peers.includes(peerUrl) && peerUrl !== this.nodeUrl) {
             this.peers.push(peerUrl);
             logger.info({ peer: peerUrl }, 'Peer added');
