@@ -72,6 +72,18 @@ coverage/
 *.creds
 credentials.txt
 secrets.txt
+Admin Credentials.txt
+Resend Account.txt
+Testing Users.txt
+Urls from github.txt
+artifacts.json
+release.json
+releases.json
+run.json
+runs.json
+jobs.json
+blocks.json
+server_blocks.json
 
 # SSH keys
 *.pub

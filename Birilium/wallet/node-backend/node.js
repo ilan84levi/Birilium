@@ -50,13 +50,19 @@ const P2P_TLS_REQUIRE_CLIENT_CERT = process.env.P2P_TLS_REQUIRE_CLIENT_CERT === 
 const P2P_TLS_CA_CERT = process.env.P2P_TLS_CA_CERT || path.join(__dirname, 'certs', 'ca-cert.pem');
 const MAX_PEERS = parseInt(process.env.MAX_PEERS) || 32;
 
-// Rate limiting - more generous for local wallet connections
+// Rate limiting - more generous for local wallet connections.
+// `validate.xForwardedForHeader` is disabled because we deliberately set
+// `app.set('trust proxy', 1)` below for the nginx reverse-proxy in front.
+// The v8 validator throws asynchronously on every request when it sees an
+// XFF header it doesn't believe is trusted, and the resulting unhandled
+// rejection was crashing the process repeatedly.
 const limiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute window
     max: 300, // 300 requests per minute (5 per second)
     message: { error: 'Too many requests from this IP, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { xForwardedForHeader: false, trustProxy: false },
     skip: (req) => {
         // Skip rate limiting for localhost connections (local wallet)
         const ip = req.ip || req.connection.remoteAddress;
@@ -74,6 +80,7 @@ const limiter = rateLimit({
 const miningLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
     max: 30, // Max 30 mining requests per minute (allows mining every ~2 seconds)
+    validate: { xForwardedForHeader: false, trustProxy: false },
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -102,7 +109,35 @@ app.use(helmet({
 // Trust proxy (nginx) - required for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 
-app.use(cors());
+// CORS — honor CORS_ORIGINS env var (comma-separated). Falls back to wildcard
+// only when unset to keep local dev frictionless. In production, set
+// CORS_ORIGINS=https://node.birilium.com,https://api.birilium.com,... so an
+// attacker site can't drive the admin API from the user's browser.
+const corsOriginsEnv = (process.env.CORS_ORIGINS || '').trim();
+const corsOriginPatterns = corsOriginsEnv
+    ? corsOriginsEnv.split(',').map(s => s.trim()).filter(Boolean)
+    : null;
+const matchOrigin = (origin) => {
+    if (!corsOriginPatterns) return true;            // wildcard fallback
+    if (!origin) return true;                        // same-origin / non-browser
+    for (const pat of corsOriginPatterns) {
+        if (pat === '*') return true;
+        // Support trailing-* wildcard like "http://localhost:*"
+        if (pat.endsWith(':*')) {
+            const base = pat.slice(0, -2);
+            if (origin.startsWith(base + ':')) return true;
+        }
+        if (pat === origin) return true;
+    }
+    return false;
+};
+app.use(cors({
+    // Returning (null, false) sends no Access-Control-Allow-Origin header, which
+    // makes the browser block the cross-origin response. Returning an Error
+    // would 500 every disallowed request, which is wasteful.
+    origin: (origin, cb) => cb(null, matchOrigin(origin)),
+    credentials: true
+}));
 app.use(bodyParser.json());
 
 // Apply rate limiting to most API routes, but exclude admin login
@@ -3157,7 +3192,8 @@ if (!configValidation.valid) {
 
 // ========== Start Server ==========
 
-const server = app.listen(HTTP_PORT, () => {
+const HTTP_HOST = process.env.HTTP_HOST || '0.0.0.0';
+const server = app.listen(HTTP_PORT, HTTP_HOST, () => {
     logger.startup({
         httpPort: HTTP_PORT,
         p2pPort: P2P_PORT,
@@ -3191,7 +3227,7 @@ const server = app.listen(HTTP_PORT, () => {
         console.error(`[ERROR] Port ${HTTP_PORT} already in use!`);
         console.error('[INFO] Trying alternate port...');
         const altPort = HTTP_PORT + 1;
-        app.listen(altPort, () => {
+        app.listen(altPort, HTTP_HOST, () => {
             console.log(`[INFO] Server started on alternate port: ${altPort}`);
             console.log(`HTTP API: http://localhost:${altPort}`);
         });

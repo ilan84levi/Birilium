@@ -557,6 +557,7 @@ class Blockchain {
     // Rebuild balance cache (Ethereum-like performance)
     rebuildBalanceCache() {
         this.balanceCache.clear();
+        const negativeAddrs = new Set();
 
         for (const block of this.chain) {
             for (const trans of block.transactions) {
@@ -572,12 +573,18 @@ class Blockchain {
                     const newBalance = currentBalance - trans.amount - (trans.fee || 0);
                     this.balanceCache.set(trans.fromAddress, newBalance);
 
-                    // Warn about negative balances (shouldn't happen)
                     if (newBalance < 0) {
-                        console.warn(`[Balance Warning] Negative balance detected for ${trans.fromAddress.substring(0,20)}...: ${newBalance} BRL at block ${block.index}`);
+                        negativeAddrs.add(trans.fromAddress);
                     }
                 }
             }
+        }
+
+        // Negative balances indicate historical bad data (P2P-accepted blocks
+        // bypassed the local mempool's balance check). Runtime is safe because
+        // getBalanceOfAddress clamps to 0. Log a single summary, not per-block.
+        if (negativeAddrs.size > 0) {
+            console.warn(`[Balance Warning] ${negativeAddrs.size} address(es) have negative computed balance from historical txs. Clamped to 0 at runtime.`);
         }
 
         this.balanceCacheDirty = false;

@@ -174,6 +174,15 @@ class DatabaseManager {
     async saveBlock(block, blockIndex) {
         if (!this.isConnected) return false;
 
+        // Guard against null/undefined/NaN/negative index — the schema has
+        // block_index INTEGER UNIQUE NOT NULL, so this would otherwise log a
+        // generic constraint error and leave the in-memory chain inconsistent
+        // with the DB. Rejecting here makes the caller's catch path explicit.
+        if (!Number.isInteger(blockIndex) || blockIndex < 0) {
+            console.error(`[DB] Refusing to save block with invalid index: ${blockIndex} (hash=${block && block.hash})`);
+            return false;
+        }
+
         try {
             // Serialize transactions to JSON
             const transactionsJSON = JSON.stringify(block.transactions);
