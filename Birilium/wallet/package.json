@@ -35,6 +35,7 @@
     "appId": "com.birilium.wallet",
     "productName": "Birilium Wallet",
     "copyright": "Copyright © 2025 Birilium Team",
+    "npmRebuild": false,
     "directories": {
       "output": "distribution",
       "buildResources": "build"
