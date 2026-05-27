@@ -254,11 +254,14 @@ function saveCertificates(cert, key, outputDir = './certs', filename = 'node') {
     const keyPath = path.join(outputDir, `${filename}-key.pem`);
 
     fs.writeFileSync(certPath, cert);
-    fs.writeFileSync(keyPath, key);
-
-    // Set restrictive permissions on private key
+    // Create the key file with restrictive perms atomically. The previous
+    // write+chmod sequence left a brief window where the key was readable
+    // by the world (umask 022 -> 0o644). Pass mode to writeFileSync so the
+    // file is created with 0o600 from the first byte.
     if (process.platform !== 'win32') {
-        fs.chmodSync(keyPath, 0o600);
+        fs.writeFileSync(keyPath, key, { mode: 0o600 });
+    } else {
+        fs.writeFileSync(keyPath, key);
     }
 
     console.log(`✓ Certificate saved to: ${certPath}`);

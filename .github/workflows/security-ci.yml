@@ -9,160 +9,97 @@ on:
     # Run weekly security scan every Monday at 9 AM UTC
     - cron: '0 9 * * 1'
 
+permissions:
+  contents: read
+
 jobs:
   dependency-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'Birilium/package-lock.json'
 
-      - name: Install dependencies (blockchain node)
-        run: |
-          cd Birilium
-          npm ci --omit=dev
+      - name: Install (blockchain node)
+        run: cd Birilium && npm ci --omit=dev
 
-      - name: Run npm audit (blockchain node)
-        continue-on-error: true
-        run: |
-          cd Birilium
-          npm audit --production --audit-level=moderate || echo "npm audit found issues"
-
-      - name: Run NodeSecure CI (blockchain node)
-        continue-on-error: true
-        run: |
-          cd Birilium
-          npx @nodesecure/ci || echo "NodeSecure found issues"
-
-      - name: Check for outdated packages (blockchain node)
-        continue-on-error: true
-        run: |
-          cd Birilium
-          npx npm-check-updates --errorLevel 2 || echo "Outdated packages found"
+      # Block on critical / high in production deps. continue-on-error was
+      # the reason this workflow never failed even when 100+ vulnerabilities
+      # accumulated — failures are silent if the gate doesn't gate.
+      - name: npm audit (blockchain node, production)
+        run: cd Birilium && npm audit --omit=dev --audit-level=high
 
   wallet-audit:
     name: Wallet Security Audit
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'Birilium/wallet/package-lock.json'
 
-      - name: Install dependencies (wallet)
-        run: |
-          cd Birilium/wallet
-          npm ci --omit=dev
+      - name: Install (wallet)
+        run: cd Birilium/wallet && npm ci --omit=dev
 
-      - name: Run npm audit (wallet)
-        continue-on-error: true
-        run: |
-          cd Birilium/wallet
-          npm audit --production --audit-level=moderate || echo "npm audit found issues"
+      - name: npm audit (wallet, production)
+        run: cd Birilium/wallet && npm audit --omit=dev --audit-level=high
 
-      - name: Run NodeSecure CI (wallet)
-        continue-on-error: true
-        run: |
-          cd Birilium/wallet
-          npx @nodesecure/ci || echo "NodeSecure found issues"
-
-      - name: Check for outdated packages (wallet)
-        continue-on-error: true
-        run: |
-          cd Birilium/wallet
-          npx npm-check-updates --errorLevel 2 || echo "Outdated packages found"
-
-  code-quality:
-    name: Code Quality & Security Linting
+  node-backend-audit:
+    name: Node Backend Audit
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Birilium/wallet/node-backend/package-lock.json'
 
-      - name: Install ESLint and security plugins
-        run: |
-          npm install -g eslint eslint-plugin-security
+      - name: Install (node-backend)
+        run: cd Birilium/wallet/node-backend && npm ci --omit=dev
 
-      - name: Run ESLint security checks
-        continue-on-error: true
-        run: |
-          cd Birilium
-          npx eslint --ext .js --plugin security . || echo "ESLint found issues"
+      - name: npm audit (node-backend, production)
+        run: cd Birilium/wallet/node-backend && npm audit --omit=dev --audit-level=high
 
   secret-scanning:
     name: Secret & Credential Scanning
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for secret scanning
 
-      - name: Run TruffleHog for secret detection
-        continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD:/pwd" trufflesecurity/trufflehog:latest filesystem /pwd --fail || echo "Secrets detected"
-
-      - name: Run GitLeaks for credential scanning
-        continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD:/path" zricethezav/gitleaks:latest detect --source="/path" --verbose || echo "Credentials detected"
+      # Pinned to a release tag, not @main. trufflesecurity/trufflehog is a
+      # high-value supply-chain target — if @main were compromised it'd run
+      # with checkout-level access to every commit in our history.
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@v3.82.6
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          # No --no-fail — let it block the build when secrets are found.
+          extra_args: --only-verified
 
   dependency-review:
     name: Dependency Review (PR only)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-
     permissions:
       contents: read
       pull-requests: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
         with:
-          fail-on-severity: moderate
+          fail-on-severity: high
           comment-summary-in-pr: true
-
-  security-summary:
-    name: Security Summary
-    runs-on: ubuntu-latest
-    needs: [dependency-audit, wallet-audit, code-quality]
-    if: always()
-
-    steps:
-      - name: Generate security summary
-        run: |
-          echo "# Security CI Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Dependency audit completed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Wallet audit completed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Code quality checks completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ Review the logs above for any security issues" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🔒 For detailed security policy, see SECURITY.md" >> $GITHUB_STEP_SUMMARY

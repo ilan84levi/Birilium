@@ -42,8 +42,11 @@ exports.default = async function notarizing(context) {
 
   console.log(`🔐 Notarizing ${appName}...`);
   console.log(`   App path: ${appPath}`);
-  console.log(`   Apple ID: ${appleId}`);
-  console.log(`   Team ID: ${teamId}`);
+  // Apple ID + Team ID aren't registered as GitHub Actions secrets, so
+  // they're not auto-redacted from logs. Don't print them to public CI
+  // output.
+  console.log(`   Apple ID: [configured]`);
+  console.log(`   Team ID:  [configured]`);
 
   try {
     await notarize({

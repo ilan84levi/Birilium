@@ -309,9 +309,12 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Handle admin panel access via keyboard shortcut (development only for security)
-  // Press CTRL+ALT+A to access admin panel - ONLY in development mode
-  if (process.env.NODE_ENV === 'development' || process.env.BIRILIUM_ADMIN === 'true') {
+  // Admin panel shortcut — DEVELOPMENT BUILDS ONLY.
+  // Previously also gated on a BIRILIUM_ADMIN env var, but child processes
+  // (including the spawned node-backend whose env we inherit) could set
+  // that and re-enable the shortcut in shipped builds. Production users
+  // don't need a global hotkey for /api/admin; they can hit the URL directly.
+  if (!app.isPackaged && process.env.NODE_ENV === 'development') {
     require('electron').globalShortcut.register('Control+Alt+A', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         const adminUrl = 'http://localhost:3001/api/admin';

@@ -11,12 +11,17 @@ on:
         required: false
         default: ''
 
+# Default to read-only for build jobs; only the release job needs write.
+# Limits blast radius if any build dependency is compromised.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needs to delete old releases + artifacts
+      actions: write    # delete old workflow artifacts
     steps:
       - name: Delete old artifacts
         uses: actions/github-script@v7
@@ -93,7 +98,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: Birilium/wallet/package-lock.json
 
@@ -107,6 +112,8 @@ jobs:
 
       - name: Build Windows
         working-directory: Birilium/wallet
+        env:
+          DEBUG: electron-builder
         run: npm run build:win
 
       - name: Copy installation instructions
@@ -148,7 +155,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: Birilium/wallet/package-lock.json
 
@@ -164,6 +171,7 @@ jobs:
         working-directory: Birilium/wallet
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          DEBUG: electron-builder
         run: npm run build:mac:arm64
 
       - name: Rename ARM64 build
@@ -224,7 +232,10 @@ jobs:
 
   build-linux:
     needs: [cleanup]
-    runs-on: ubuntu-latest
+    # Pin Ubuntu 22.04: ubuntu-latest now resolves to 24.04 which ships
+    # libfuse3 instead of libfuse2, and electron-builder's AppImage
+    # packaging still needs libfuse2. Easier to pin than to wrestle apt.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -233,9 +244,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: Birilium/wallet/package-lock.json
+
+      - name: Install Linux build prerequisites
+        # libarchive-tools provides bsdtar, used by some AppImage tooling.
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends libfuse2 libarchive-tools
 
       - name: Install main dependencies
         working-directory: Birilium/wallet
@@ -247,6 +264,8 @@ jobs:
 
       - name: Build Linux
         working-directory: Birilium/wallet
+        env:
+          DEBUG: electron-builder
         run: npm run build:linux
 
       - name: Copy installation instructions
@@ -275,6 +294,8 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write   # needs to create the GitHub release
 
     steps:
       - name: Checkout code
@@ -288,8 +309,11 @@ jobs:
       - name: List downloaded files
         run: find release-assets -type f
 
+      # Pinned to a specific SHA (v2.1.0) — a moving tag like @v1 could be
+      # repointed if the action's repository were compromised, and this
+      # step holds a token with contents:write to our release page.
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
         with:
           files: |
             release-assets/**/*.exe

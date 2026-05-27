@@ -48,22 +48,25 @@ cat > .env << 'EOF'
 HTTP_PORT=3001
 P2P_PORT=6001
 NODE_ENV=production
-API_KEY=REPLACE_WITH_API_KEY_FROM_ABOVE
+API_KEY=__SET_AFTER_DEPLOY__
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=REPLACE_WITH_PASSWORD_FROM_ABOVE
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=birilium
+# Use ADMIN_PASSWORD_HASH (bcrypt) — never plaintext ADMIN_PASSWORD in prod.
+ADMIN_PASSWORD_HASH=__SET_AFTER_DEPLOY__
+JWT_SECRET=__SET_AFTER_DEPLOY__
 MAX_PEERS=50
 ENABLE_P2P_TLS=false
-NODE_PRIVATE_KEY=REPLACE_WITH_NODE_KEY_FROM_ABOVE
+NODE_PRIVATE_KEY=__SET_AFTER_DEPLOY__
 LOG_LEVEL=info
 LOG_FILE=./logs/node.log
+# CORS allow-list for the admin HTTP API. Restrict to your own hosts.
+CORS_ORIGINS=https://node.birilium.com,https://api.birilium.com
 PAYPAL_MODE=live
-PAYPAL_CLIENT_ID=your_live_paypal_client_id_here
-PAYPAL_CLIENT_SECRET=your_live_paypal_client_secret_here
-PAYPAL_PLAN_ID=your_paypal_subscription_plan_id_here
-CONTACT_EMAIL=your_contact_email@example.com
-CONTACT_EMAIL_PASSWORD=your_email_app_password_here
+# Do NOT paste real credentials into this file — pull from your secret store.
+PAYPAL_CLIENT_ID=__FROM_PAYPAL_DASHBOARD__
+PAYPAL_CLIENT_SECRET=__FROM_PAYPAL_DASHBOARD__
+PAYPAL_PLAN_ID=__FROM_PAYPAL_DASHBOARD__
+# Contact form sends via Resend (preferred) or nodemailer SMTP fallback.
+RESEND_API_KEY=__FROM_RESEND_DASHBOARD__
 EOF
 
 **Now edit the file to add your credentials:**
@@ -104,12 +107,8 @@ You should see JSON output with blockchain data!
 DONE!
 ========================================
 
-Your node is now running at:
-- HTTP API: http://159.65.96.82:3001
-- P2P: ws://159.65.96.82:6001
-
-Test from your computer:
-curl http://159.65.96.82:3001/health
+Your node is now running on the IP you deployed to. Test from your computer:
+curl http://YOUR_SERVER_IP:3001/health
 
 ========================================
 Useful Commands:

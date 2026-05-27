@@ -30,6 +30,14 @@ if [ -z "$1" ]; then
 fi
 
 SERVER_IP=$1
+# Validate that the supplied argument is a plain IPv4 address or a simple
+# DNS-style hostname. Without this, an attacker (or a typo) could pass
+# something like 'root@x;rm -rf /' and have it interpolated into every
+# SSH command below.
+if [[ ! "$SERVER_IP" =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|[A-Za-z0-9.-]{1,253})$ ]]; then
+    echo -e "${RED}Invalid SERVER_IP: '$SERVER_IP'. Expected an IPv4 or a plain hostname.${NC}"
+    exit 1
+fi
 echo -e "${GREEN}Target Server: ${SERVER_IP}${NC}"
 echo ""
 
@@ -118,10 +126,17 @@ NODE_PRIVATE_KEY=$(node -e "const EC = require('elliptic').ec; const ec = new EC
 JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
 ADMIN_USERNAME="admin_$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))")"
 
-# Generate password hash
-ADMIN_PASSWORD_HASH=$(node -e "
+# Generate password hash. Pipe the password via stdin instead of
+# interpolating it into the -e script — the previous form would have
+# allowed any single-quote, backtick, or $() in the generated password
+# to break out of the JS string and execute as shell on the remote root.
+# Machine-generated passwords don't currently produce such chars but the
+# pattern was structurally unsafe.
+ADMIN_PASSWORD_HASH=$(printf '%s' "$ADMIN_PASSWORD" | node -e "
 const bcrypt = require('bcrypt');
-bcrypt.hash('${ADMIN_PASSWORD}', 10).then(hash => console.log(hash));
+let d = '';
+process.stdin.on('data', c => d += c);
+process.stdin.on('end', () => bcrypt.hash(d, 10).then(h => console.log(h)));
 ")
 
 # Create .env file with SQLite configuration

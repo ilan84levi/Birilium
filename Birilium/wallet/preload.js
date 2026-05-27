@@ -180,25 +180,38 @@ const walletAPI = {
   },
 
   /**
-   * Encryption/Decryption for local storage
+   * Encryption/Decryption for local storage.
+   *
+   * NOTE: previously used AES-256-CBC with no authentication tag, which
+   * meant ciphertext stored in localStorage could be silently tampered
+   * with (bit-flipping the IV or ciphertext rolled through to the
+   * decryption path and returned garbage data that could deceive the
+   * wallet). Now uses AES-256-GCM (authenticated encryption). Old
+   * ciphertext (no `tag` field) is still decryptable so we don't lock
+   * out existing wallets — a one-shot migration: on successful CBC
+   * decrypt, the caller should re-encrypt under the new scheme on the
+   * next save.
    */
   crypto: {
     encrypt: (data, password) => {
       try {
         const salt = crypto.randomBytes(32);
         const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
-        const iv = crypto.randomBytes(16);
-
-        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+        const iv = crypto.randomBytes(12); // 12 bytes is the GCM standard
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
         let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
         encrypted += cipher.final('hex');
+        const tag = cipher.getAuthTag().toString('hex');
 
         return {
           success: true,
           encrypted: JSON.stringify({
+            v: 2,
+            alg: 'aes-256-gcm',
             salt: salt.toString('hex'),
             iv: iv.toString('hex'),
-            data: encrypted
+            data: encrypted,
+            tag
           })
         };
       } catch (error) {
@@ -213,14 +226,22 @@ const walletAPI = {
         const iv = Buffer.from(parsed.iv, 'hex');
         const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
 
+        // New v2 (GCM) ciphertext — verifies an auth tag so tampering is
+        // detected as a thrown error rather than silently corrupted data.
+        if (parsed.v === 2 || parsed.alg === 'aes-256-gcm') {
+          const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+          decipher.setAuthTag(Buffer.from(parsed.tag, 'hex'));
+          let decrypted = decipher.update(parsed.data, 'hex', 'utf8');
+          decrypted += decipher.final('utf8');
+          return { success: true, data: JSON.parse(decrypted) };
+        }
+
+        // Legacy v1 (CBC) ciphertext — decrypt for backward compat. The
+        // caller should re-save under v2 on the next write.
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         let decrypted = decipher.update(parsed.data, 'hex', 'utf8');
         decrypted += decipher.final('utf8');
-
-        return {
-          success: true,
-          data: JSON.parse(decrypted)
-        };
+        return { success: true, data: JSON.parse(decrypted), migrated: true };
       } catch (error) {
         return { success: false, error: 'Invalid password or corrupted data' };
       }

@@ -63,9 +63,6 @@ const Toast = {
     show(message, type = 'info', duration = 5000) {
         if (!this.container) this.init();
 
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-
         const icons = {
             success: '✓',
             error: '✗',
@@ -73,11 +70,28 @@ const Toast = {
             info: 'ℹ'
         };
 
-        toast.innerHTML = `
-            <span class="toast-icon">${icons[type] || icons.info}</span>
-            <span class="toast-message">${message}</span>
-            <button class="toast-close" onclick="this.parentElement.remove()">×</button>
-        `;
+        // Build the toast via DOM APIs instead of innerHTML so a `message`
+        // sourced from network data (server errors, peer-supplied text, etc.)
+        // can never escape into executable HTML. With nodeIntegration=true
+        // an HTML-injection here was full RCE on the user's machine.
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'toast-icon';
+        iconSpan.textContent = icons[type] || icons.info;
+        toast.appendChild(iconSpan);
+
+        const msgSpan = document.createElement('span');
+        msgSpan.className = 'toast-message';
+        msgSpan.textContent = String(message);
+        toast.appendChild(msgSpan);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'toast-close';
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', () => toast.remove());
+        toast.appendChild(closeBtn);
 
         this.container.appendChild(toast);
 
@@ -262,25 +276,71 @@ const AddressBook = {
         const container = document.getElementById(containerId);
         if (!container) return;
 
+        // Empty container without using innerHTML.
+        while (container.firstChild) container.removeChild(container.firstChild);
+
         if (this.entries.length === 0) {
-            container.innerHTML = '<p class="no-transactions">No saved addresses</p>';
+            const p = document.createElement('p');
+            p.className = 'no-transactions';
+            p.textContent = 'No saved addresses';
+            container.appendChild(p);
             return;
         }
 
-        container.innerHTML = this.entries.map(entry => `
-            <div class="address-item" data-id="${entry.id}">
-                <div class="address-avatar">${entry.name.charAt(0).toUpperCase()}</div>
-                <div class="address-details">
-                    <div class="address-name">${this.escapeHtml(entry.name)}</div>
-                    <div class="address-value">${entry.address.substring(0, 20)}...${entry.address.substring(entry.address.length - 10)}</div>
-                </div>
-                <div class="address-actions">
-                    <button class="btn-icon" onclick="AddressBook.copyAddress('${entry.address}')" title="Copy Address">📋</button>
-                    <button class="btn-icon" onclick="AddressBook.useAddress('${entry.address}')" title="Send to this address">📤</button>
-                    <button class="btn-icon delete" onclick="AddressBook.remove('${entry.id}'); AddressBook.render('${containerId}')" title="Delete">🗑</button>
-                </div>
-            </div>
-        `).join('');
+        // Build each row via DOM APIs. Address-book entries come from a
+        // backup file the user may import; an entry name or address
+        // containing a quote or HTML payload would have escaped the
+        // previous inline-onclick string and run arbitrary code (the
+        // wallet runs with nodeIntegration=true).
+        for (const entry of this.entries) {
+            const safeAddress = String(entry.address || '');
+            const safeName = String(entry.name || '');
+
+            const item = document.createElement('div');
+            item.className = 'address-item';
+            item.dataset.id = entry.id;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'address-avatar';
+            avatar.textContent = safeName.charAt(0).toUpperCase();
+            item.appendChild(avatar);
+
+            const details = document.createElement('div');
+            details.className = 'address-details';
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'address-name';
+            nameDiv.textContent = safeName;
+            details.appendChild(nameDiv);
+            const valueDiv = document.createElement('div');
+            valueDiv.className = 'address-value';
+            valueDiv.textContent = safeAddress.length > 30
+                ? `${safeAddress.substring(0, 20)}...${safeAddress.substring(safeAddress.length - 10)}`
+                : safeAddress;
+            details.appendChild(valueDiv);
+            item.appendChild(details);
+
+            const actions = document.createElement('div');
+            actions.className = 'address-actions';
+            const mkBtn = (cls, title, txt, onClick) => {
+                const b = document.createElement('button');
+                b.className = cls;
+                b.title = title;
+                b.textContent = txt;
+                b.addEventListener('click', onClick);
+                return b;
+            };
+            actions.appendChild(mkBtn('btn-icon', 'Copy Address', '📋',
+                () => AddressBook.copyAddress(safeAddress)));
+            actions.appendChild(mkBtn('btn-icon', 'Send to this address', '📤',
+                () => AddressBook.useAddress(safeAddress)));
+            actions.appendChild(mkBtn('btn-icon delete', 'Delete', '🗑', () => {
+                AddressBook.remove(entry.id);
+                AddressBook.render(containerId);
+            }));
+            item.appendChild(actions);
+
+            container.appendChild(item);
+        }
     },
 
     copyAddress(address) {

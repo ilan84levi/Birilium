@@ -1248,11 +1248,13 @@ class BiriliumBlockchainWallet {
             manageWalletAddressFull.value = this.walletAddress || '';
         }
 
-        // Update secret key in manage view
-        const manageSecretKey = document.getElementById('manageSecretKey');
-        if (manageSecretKey) {
-            manageSecretKey.value = this.privateKey || '';
-        }
+        // Secret-key field is no longer populated on every UI refresh. The
+        // refresh runs every few seconds, which left the raw private key
+        // sitting in document.getElementById('manageSecretKey').value at
+        // all times — any in-renderer script (XSS, extension, malicious
+        // peer-supplied content) could read it. The key is now only
+        // populated when the user explicitly clicks the toggleSecretKeyBtn
+        // (see toggle handler later in this file).
 
         // Calculate totals from transactions
         let totalReceived = 0;
@@ -1633,15 +1635,19 @@ class BiriliumBlockchainWallet {
             });
         }
 
-        // Toggle secret key visibility
+        // Toggle secret-key visibility. The field is populated only when
+        // the user clicks "Show" (and cleared when they click "Hide"), so
+        // the raw key is never sitting in the DOM between user actions.
         const toggleSecretKeyBtn = document.getElementById('toggleSecretKeyBtn');
         const manageSecretKey = document.getElementById('manageSecretKey');
         if (toggleSecretKeyBtn && manageSecretKey) {
             toggleSecretKeyBtn.addEventListener('click', () => {
-                if (manageSecretKey.type === 'password') {
+                if (manageSecretKey.type === 'password' || !manageSecretKey.value) {
+                    manageSecretKey.value = this.privateKey || '';
                     manageSecretKey.type = 'text';
                     toggleSecretKeyBtn.textContent = '🙈 Hide';
                 } else {
+                    manageSecretKey.value = '';
                     manageSecretKey.type = 'password';
                     toggleSecretKeyBtn.textContent = '👁️ Show';
                 }
@@ -1793,30 +1799,13 @@ function copyToClipboard(elementId) {
     }
 }
 
-// Handle payment (simulation)
+// handlePayment was a stub that granted unlimited premium mining after a
+// 1s setTimeout with no server verification. It was callable from any
+// in-renderer script, making it a trivial privilege-escalation gadget.
+// Removed entirely until real payment integration goes through the PayPal
+// + /api/subscription/activate flow on the node-backend.
 function handlePayment(method) {
-    const methodName = method === 'credit-card' ? 'Credit Card' : 'PayPal';
-    const confirmed = confirm(
-        `This will open a ${methodName} payment window to process your $5.00 monthly subscription.\n\n` +
-        `Note: Payment integration coming soon.`
-    );
-
-    if (confirmed) {
-        setTimeout(() => {
-            alert('Payment processed successfully! Your premium mining subscription is now active.');
-            if (window.wallet) {
-                window.wallet.hasSubscription = true;
-                window.wallet.saveWallet();
-                window.wallet.updateUI();
-
-                const subscriptionStatus = document.getElementById('subscriptionStatus');
-                if (subscriptionStatus) {
-                    subscriptionStatus.textContent = '✓ Active Premium Subscription - Renews monthly';
-                    subscriptionStatus.style.color = '#28a745';
-                }
-            }
-        }, 1000);
-    }
+    alert('Subscriptions go through PayPal. Click the PayPal button in the subscription tab to subscribe.');
 }
 
 // Initialize wallet when page loads
