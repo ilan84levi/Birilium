@@ -127,7 +127,7 @@ jobs:
           name: Birilium-Wallet-Windows-Setup
           path: |
             Birilium/wallet/distribution/*.exe
-            Birilium/wallet/distribution/*.yml
+            Birilium/wallet/distribution/latest.yml
             Birilium/wallet/distribution/INSTALL-WINDOWS.txt
           retention-days: 5
 
@@ -218,7 +218,7 @@ jobs:
           name: Birilium-Wallet-macOS-ARM64
           path: |
             Birilium/wallet/distribution/Birilium-Wallet-macOS-ARM64.dmg
-            Birilium/wallet/distribution/*.yml
+            Birilium/wallet/distribution/latest-mac.yml
             Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
 
@@ -278,7 +278,7 @@ jobs:
           name: Birilium-Wallet-Linux-AppImage
           path: |
             Birilium/wallet/distribution/*.AppImage
-            Birilium/wallet/distribution/*.yml
+            Birilium/wallet/distribution/latest-linux.yml
             Birilium/wallet/distribution/INSTALL-LINUX.txt
           retention-days: 5
 
@@ -315,6 +315,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
         with:
+          # Specifically NOT including builder-debug.yml — it's a leftover
+          # debug artifact produced when DEBUG=electron-builder is set and
+          # has the same filename on every platform; uploading 3 of them
+          # crashes the release action with a duplicate-asset 404.
           files: |
             release-assets/**/*.exe
             release-assets/**/*.zip
@@ -322,7 +326,9 @@ jobs:
             release-assets/**/*.AppImage
             release-assets/**/*.deb
             release-assets/**/*.txt
-            release-assets/**/*.yml
+            release-assets/**/latest.yml
+            release-assets/**/latest-mac.yml
+            release-assets/**/latest-linux.yml
           draft: false
           generate_release_notes: true
           body: |
