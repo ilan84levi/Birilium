@@ -1,6 +1,6 @@
 {
   "name": "birilium-wallet",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Birilium Cryptocurrency Desktop Wallet",
   "homepage": "https://birilium.com",
   "main": "main.js",
@@ -40,6 +40,7 @@
       "output": "distribution",
       "buildResources": "build"
     },
+    "artifactName": "Birilium-Wallet-${version}.${ext}",
     "files": [
       "main.js",
       "preload.js",
@@ -104,7 +105,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Birilium Wallet",
       "deleteAppDataOnUninstall": true,
-      "perMachine": false
+      "perMachine": false,
+      "artifactName": "Birilium-Wallet-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
