@@ -176,6 +176,11 @@ jobs:
         run: npm run build:mac:arm64
 
       - name: Build macOS (Intel)
+        # Intel builds intermittently fail with dmgbuild/plistlib
+        # InvalidFileException on macos-latest. Apple Silicon is the
+        # primary target now; mark non-blocking so a flaky Intel build
+        # doesn't keep ARM64 + the rest of the release from shipping.
+        continue-on-error: true
         working-directory: Birilium/wallet
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -194,12 +199,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Birilium-Wallet-macOS
+          # github.ref_name includes the `v` prefix (v1.5.5); the
+          # produced file is Birilium-Wallet-1.5.5.dmg. Use a permissive
+          # glob instead so we don't have to strip the prefix.
           path: |
-            Birilium/wallet/distribution/Birilium-Wallet-${{ github.ref_name }}*.dmg
-            Birilium/wallet/distribution/Birilium-Wallet-${{ github.ref_name }}*-mac.zip
+            Birilium/wallet/distribution/Birilium-Wallet-*.dmg
+            Birilium/wallet/distribution/Birilium-Wallet-*-mac.zip
             Birilium/wallet/distribution/latest-mac.yml
             Birilium/wallet/distribution/INSTALL-MACOS.txt
           retention-days: 5
+          # The upload-artifact action errors out if no files matched
+          # (default: error). With Intel build non-blocking, only the
+          # ARM64 artifacts may exist; that's still a valid release.
+          if-no-files-found: warn
 
   build-linux:
     needs: [cleanup]

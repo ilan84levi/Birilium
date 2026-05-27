@@ -50,6 +50,7 @@
       "renderer-wallet.js",
       "wallet-security.js",
       "ui-enhancements.js",
+      "paypal-integration.js",
       "debug-terms.html",
       "icon.png",
       "package.json",

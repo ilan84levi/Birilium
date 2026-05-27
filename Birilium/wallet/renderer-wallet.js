@@ -570,19 +570,27 @@ class BiriliumBlockchainWallet {
 
     // Save wallet to localStorage with encryption
     saveWallet(password) {
+        // Refuse to persist a private key in plaintext. The previous fallback
+        // dropped the raw key into localStorage (== a file on disk, readable
+        // by any process that can list the user's AppData) when no password
+        // was provided. Force a password prompt instead. The caller path
+        // most likely hitting this is auto-save during background updates;
+        // surface a one-time setup modal there.
         if (!password && !this.password) {
-            // No password set - save unencrypted (for backward compatibility)
-            const walletData = {
-                address: this.walletAddress,
-                privateKey: this.privateKey,
-                hasSubscription: this.hasSubscription,
-                subscriptionId: this.subscriptionId,
-                subscriptionStartDate: this.subscriptionStartDate,
-                encrypted: false
-            };
-            localStorage.setItem('biriliumBlockchainWallet', JSON.stringify(walletData));
-            console.log('Wallet saved to localStorage (unencrypted)');
-            return;
+            console.warn('[wallet] refusing to save: no password set. Prompting user.');
+            const entered = (typeof prompt === 'function')
+                ? prompt('Set a password to encrypt your wallet on this device.\nMinimum 8 characters.')
+                : null;
+            if (!entered || entered.length < 8) {
+                if (typeof Toast !== 'undefined' && Toast.error) {
+                    Toast.error('Wallet not saved — a password (8+ chars) is required.');
+                } else {
+                    alert('Wallet not saved — a password of at least 8 characters is required.');
+                }
+                return;
+            }
+            this.password = entered;
+            password = entered;
         }
 
         const passwordToUse = password || this.password;
